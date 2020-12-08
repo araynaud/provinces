@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: tpartnergroups/app/components/main/main.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: tpartnergroups/app/components/main/main.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module tpartnergroups/components/main
+@description This is the main page controller for TradingPartnerGroups and ProductGroups pages.
+
+@param attributeTab     {object[]}         		   =
+@param remoteActions    {optional|string}        @
+@param loadGroup        {optional|string}        @
+@param label            {optional|string}        @
+*/
+
+'use strict';
+module.exports = function (ngModule)
+{
+	ngModule.component('groupsMain', {
+		template: require('./main.html'),
+		bindings: { attributeTab: "=", remoteActions: "@", loadGroup: "@", label: "@" },
+		controllerAs: 'vm',
+		controller: GroupsMainController
+	});
+
+	GroupsMainController.$inject = ['$window', '$timeout', '$element', 'RemoteActionService', 'CommonUtils', 'NavigationService'];
+	function GroupsMainController  ( $window,   $timeout,   $element,   RemoteActionService,   CommonUtils,   NavigationService )
+	{
+		var vm = this;
+		$window.groupsMain = vm;
+		var remoteActions = $window[vm.remoteActions].remoteActions;
+		vm.stencilImage = true;
+
+		//call remote action on Apex controller
+		vm.callRemoteAction = function(method, args, outputElement)
+		{
+			return RemoteActionService.callRemoteAction(method, args, outputElement, vm);
+		};
+
+		vm.$onInit = function()
+		{
+			vm.showLoader = false;
+			vm.disableBtn = false;
+			vm.tabsactive = false;
+
+			/*Product Attributes tab Code*/
+			// Attributes relationship directive initialization
+			vm.AttributeList = [];
+			vm.AttributeTypes = [];
+			vm.AttributesViewMode = 'A'; // attributes view
+			vm.AttributesSelectedTypes = []; // all types of attributes (text, picklist, multipicklist)
+			vm.AttributeGroups = [];
+
+			/*Product Test tab Code*/
+			vm.spinnerLoad          = true;
+			vm.listSize  			= 100;
+			vm.maxListLimit  		= 15000;
+			vm.shareWithVisible 	= false;
+			vm.available 			= [];
+			vm.groupId				= NavigationService.getParameter("id");
+			vm.isNew = !vm.groupId;
+			vm.cancelButtonText     = "Cancel";
+			/*Product Test tab Code end*/
+
+			vm.showTags = true;
+			vm.showMembers = true;
+			vm.saving = false;
+			vm.errorSaving = false;
+			vm.showSuccess = false;
+			vm.masterAttributeList = [];
+			vm.multiSelectedStatusAvailableListTemp = [];
+			vm.masterPickListValueStatusList = {};
+
+			//lists to store selected types attrs
+			vm.multiSelectedTypeAttributeList = [];
+			//lists to store selected status attsr
+			vm.multiSelectedStatusAttributeList = [];
+			vm.masterTagList = [];
+			vm.masterMemberList = [];
+			vm.isActiveTabOne = true;
+			vm.isActiveTabTwo = false;
+			vm.isActiveTabThree = false;
+			vm.successModalMessage = '';
+			vm.successModalMessageHeader = '';
+			vm.oldVal = false;
+
+			// proposed Trading Partner Group object
+			vm.callRemoteAction(remoteActions.getIfBatchAlreadyRunning, [vm.groupId], function(result)
+			{
+				vm.disableBtn = result;
+				if(vm.disableBtn){
+					vm.showWarning = true;
+				}
+
+			});
+
+			if($window[vm.loadGroup])
+				vm.group = $window[vm.loadGroup];
+			else
+				vm.group = { name: "", tags: [], attributes: [], members: [] };
+
+			if($window[vm.loadGroup].id != null)
+			{
+				if(window.isProductGroupPage){
+					vm.successModalMessageHeader = 'Edit Product Group';
+					vm.successModalMessage = 'Product group has been updated successfully';
+					vm.iconNane = 'custom57';
+					vm.iconSvg = 'custom';
+					vm.isTradingPartner = false;
+					vm.topHead = 'Product groups';
+				}
+				else{
+					vm.successModalMessageHeader = 'Edit Trading Partner Group';
+					vm.successModalMessage = 'Trading partner group has been updated successfully';
+					vm.iconNane = 'new_group';
+					vm.iconSvg = 'action';
+					vm.isTradingPartner = true;
+					vm.topHead = 'trading partner groups';
+				}
+			}
+			else
+			{
+				if(window.isProductGroupPage){
+					vm.successModalMessage = 'Product group has been created successfully';
+					vm.successModalMessageHeader = 'New Product Group';
+					vm.iconNane = 'custom57';
+					vm.iconSvg = 'custom';
+					vm.isTradingPartner = false;
+					vm.topHead = 'Product groups';
+				}
+				else{
+					vm.successModalMessage = 'Trading partner group has been created successfully';
+					vm.successModalMessageHeader = 'New Trading Partner Group';
+					vm.iconNane = 'new_group';
+					vm.iconSvg = 'action';
+					vm.isTradingPartner = true;
+					vm.topHead = 'trading partner groups';
+				}
+			}
+
+			vm.status = vm.group.id;
+			vm.loadPicklists();
+
+			vm.callRemoteAction(remoteActions.getAllTags, [], function(result)
+			{
+				vm.masterTagList = result;
+				vm.checkAttributes();
+				vm.spinnerLoad = false;
+				$timeout(function() { vm.stencilImage = false; }, 1000);
+			});
+
+			vm.callRemoteAction(remoteActions.getAllAttributes, [], function(result){
+				vm.masterAttributeList = result;
+				var attributeIds = [];
+				angular.forEach(result, function(item) {
+					attributeIds.push(item.id);
+				});
+				vm.getAllMembers(attributeIds);
+			});
+
+			vm.getAttributesList = function(param)
+			{
+				vm.callRemoteAction(window.RelationshipUtil.remoteActions.getRelationshipAttribute, [param], function(result)
+				{
+					vm.AttributeList = result;
+					vm.setEditAttributes();
+				});
+			};
+
+			vm.getAttributesWithValues = function(id, relationshipType)
+			{
+				vm.callRemoteAction(window.RelationshipUtil.remoteActions.getGroupAttributes, [id, relationshipType], function(result) {
+					console.log('id', id);
+					vm.AttributeList = result.attributes;
+					vm.AttributeTypes = result.types;
+					console.log('vm.AttributeList', vm.AttributeList);
+					console.log('vm.AttributeTypes', vm.AttributeTypes);
+					//vm.setEditAttributes();
+				});
+			};
+
+			vm.getAttributesGroupList = function()
+			{
+				vm.callRemoteAction(window.RelationshipUtil.remoteActions.getAttributesGroups, [], "AttributeGroups");
+			};
+
+			if(vm.label == 'Trading Partner Group')
+			{
+				vm.firstTabTitle = "Trading Partners";
+				vm.secondTabTitle = "Trading Partners to be Added";
+				vm.thirdTabTitle = "Trading Partners to be Removed";
+				vm.getAttributesList('UU Relationship');
+				vm.searchName = "trading partners";
+			}
+			else if(vm.label == 'Product Group')
+			{
+				vm.firstTabTitle = "ICIX Products";
+				vm.secondTabTitle = "ICIX Products to be Added";
+				vm.thirdTabTitle = "ICIX Products to be Removed";
+				if(vm.groupId){
+					console.log('vm.groupId', vm.groupId);
+					vm.getAttributesGroupList();
+					vm.getAttributesWithValues(vm.groupId, 'UP Relationship');
+				}else{
+					//vm.getAttributesList('PP Relationship');
+					vm.getAttributesGroupList();
+					vm.getAttributesWithValues(null, 'UP Relationship');
+				}
+				vm.searchName = "ICIX Products";
+			}
+
+			vm.callRemoteAction(remoteActions.getPartnerGroupPrefixName, [], "PartnerGroupPrefixName");
+
+			vm.callRemoteAction(window.RelationshipUtil.remoteActions.getstatesList, [], "statesList");
+
+			vm.callRemoteAction(window.RelationshipUtil.remoteActions.getCountryList, [], "CountryList");
+
+			//TODO: move to common / arrayExtensions
+			vm.startsWith = function (actual, expected)
+			{
+				var lowerStr = (actual + "").toLowerCase();
+				return lowerStr.indexOf(expected.toLowerCase()) === 0;
+			};
+
+			vm.RemoveMultipleCountry = function(obj, name)
+			{
+				var myTempArr = obj.selectedItemsList.filter(function(item){ return item != name; });
+				obj.selectedItemsList = myTempArr;
+				vm.filterMembers();
+			};
+
+			vm.MultiselectCountry = function(obj, name)
+			{
+				if(obj &amp;&amp; Array.isNotEmpty(obj.selectedItemsList))
+				{
+					var exist = false;
+					angular.forEach(obj.selectedItemsList, function(value)
+					{
+						if(value == name)
+							exist = true;
+					});
+
+					if(!exist){
+						//DE8396
+						obj.selectedItemsList.push(name);
+						obj.countryModel = null;
+						obj.hide = true;
+					}
+					else
+						alert('Object is already added');
+				}
+				else if(obj)
+				{
+					obj.selectedItemsList = [];
+					obj.selectedItemsList.push(name);
+					obj.countryModel = null;
+
+				}
+				vm.filterMembers();
+			};
+
+			vm.SingleSelectCountry = function(obj, name)
+			{
+				obj.value = name;
+				obj.hide = true;
+				vm.filterMembers();
+			};
+
+			vm.RemoveSingleCountry = function(obj){
+				obj.value = null;
+				obj.hide = null;
+				vm.filterMembers();
+			};
+
+			//get all status attrs from server and set in list
+			vm.multiSelectedStatusAvailableList = [];
+			vm.callRemoteAction(remoteActions.getAllRelationshipStatuses, [], function(result)
+			{
+				angular.forEach(result, function(item) {
+					vm.multiSelectedStatusAvailableList.push({ name: "Status", id: "", value: item });
+				});
+			});
+
+			//get all status attrs from server and set in list
+			vm.multiSelectedTypeAvailableList = [];
+			vm.callRemoteAction(remoteActions.getAllRelationshipTypes, [], function(result)
+			{
+				angular.forEach(result, function(item) {
+					vm.multiSelectedTypeAvailableList.push({ name: "type", id: "", value: item });
+				});
+			});
+
+			//get all selected status/types attrs from server and set auto select
+			//all selected attrs are set on right side as auto selectd in multi select list and
+			//remaining are set as unselectedStatus on left side
+			if(String.isNotEmpty(vm.group.id))
+			{
+				vm.callRemoteAction(remoteActions.getExistingAttributes, [vm.group.id], function(result)
+				{
+					//if attrs were selected,set then auto selected
+					if (Array.isEmpty(result)) return;
+
+					var unselectedStatus = [];
+					var unselectedTypes = [];
+					var count = 0;
+
+					angular.forEach(result, function(item)
+					{
+						unselectedStatus = [];
+						unselectedTypes = [];
+						//this is used as id from all attrs.
+						count++;
+						var d = { id: count,  name: item.name, value: item.value};
+						//auto select status attrs
+						if(String.equals(item.name, 'status'))
+						{
+							//put auto selected attrs in list and show on right side of multiselect list
+							vm.multiSelectedStatusAttributeList.push(d);
+
+							//select all attrs which were not selected and show on left side of multiselect list
+							angular.forEach(vm.multiSelectedStatusAvailableList, function(item2)
+							{
+								if(!String.equals(item2.value, item.value))
+								{
+									count++;
+									unselectedStatus.push({ id: count, name: item2.name,  value: item2.value});
+								}
+							});
+							vm.multiSelectedStatusAvailableList = unselectedStatus;
+						}
+						//auto select types attrs
+						else if(String.equals(item.name, 'type'))
+						{
+							//put auto selected attrs in list and show on right side of multiselect list
+							vm.multiSelectedTypeAttributeList.push(d);
+
+							//select all attrs which were not selected and show on left side of multiselect list
+							angular.forEach(vm.multiSelectedTypeAvailableList, function(item3)
+							{
+								if(!String.equals(item3.value, item.value))
+								{
+									count++;
+									unselectedTypes.push({ id: count, name: item3.name,  value: item3.value});
+								}
+							});
+							vm.multiSelectedTypeAvailableList = unselectedTypes;
+						}
+						//DE8708
+						vm.filterMembers();
+
+					});
+				});
+			}
+		};		// end vm.init
+
+		vm.getAllMembers = function (param)
+		{
+			//TODO: when loaded, set the attributes that the group already has isChecked=true;
+
+			angular.forEach(vm.masterTagList, function(item) {
+				param.push(item.id);
+			});
+
+			vm.callRemoteAction(remoteActions.getAllMembers, [param], function(result)
+			{
+				vm.masterMemberList = result;
+				$timeout(function()
+				{
+					var divsize = angular.element(document.getElementById('tab-scoped-0')).prop('offsetHeight');
+					var outerModalHeight = angular.element(document.getElementById('newTradingPartnerModal')).prop('offsetHeight');
+					var tmp = divsize + 'px';
+					var tmp01 = outerModalHeight + 'px';
+					vm.setHeightDiv = tmp;
+					vm.setInnerModalHeight = tmp01;
+					vm.setInnerModal = tmp01;
+				}, 50);
+
+				angular.forEach(vm.masterMemberList, function(m)
+				{
+					if(angular.isArray(m.tags) &amp;&amp; m.tags.length > 1)
+						m.tags = m.tags.distinct();
+				});
+
+				vm.filterMembers();
+				vm.PreviousMembers = [];
+				if(!vm.oldVal)
+				{
+					vm.oldVal = true;
+					if(vm.group &amp;&amp; vm.group.members)
+						vm.PreviousMembers = JSON.parse(JSON.stringify(vm.group.members));
+				}
+			});
+		};
+		//filter member on th basis of Type+Status+Tag selection
+		//Now multiple Status/Type selection are allowed. So change logic for member filter accordingly.
+		//Now member will be selected Tags(with AND operation)+Types(OR)+Status(OR).
+		//Here AND: member must be associated with each Tag.
+		//OR: Associated with any  of selected Types/Status
+
+		vm.filterMemberWithMultiSelect = function ()
+		{
+			//Multiselect component is common and used in many places in app.
+			//For compalince, when Types/Status are selected/deselected?(left/right move),
+			//member filter process is made.
+			//So all pages where this process is needed have this flag true else false/null/undefined
+			if(window.applymemberFilteronMove)
+			{
+				var memberListAfterTypeFilter = [];
+				var memberListAfterStatusFilter = [];
+				var memberListAfterTagFilter = [];
+				var memberListAfterAttrFilter = [];
+				var memberListAfterTestFilter = [];
+
+				var selectedStatuses = Array.distinct(vm.multiSelectedStatusAttributeList, "value");
+				var selectedTypes    = Array.distinct(vm.multiSelectedTypeAttributeList,   "value");
+				var selectedTags     = vm.group.tags = vm.masterTagList.filter(tagIsSelected);
+
+				var attrExist = false;
+				for(var i = 0; i &lt; Array.getCount(vm.AttributeList); i++) {
+					var el = vm.AttributeList[i];
+					if(String.isNotEmpty(el.value) &amp;&amp; (el.type == 'Picklist' || el.type == 'Multi-Picklist')) {
+						attrExist = true;
+						break;
+					}
+				}
+
+				//If no Tag+Status+Type is selected, no member is selected
+				if((Array.isEmpty(vm.multiSelectedStatusAttributeList)) &amp;&amp;
+					(Array.isEmpty(vm.multiSelectedTypeAttributeList)) &amp;&amp;
+					(Array.isEmpty(selectedTags)) &amp;&amp;
+					(Array.isEmpty(vm.productGroupTestingProgramsSelectedList))
+					&amp;&amp; attrExist == false)
+				{
+					memberListAfterAttrFilter = [];
+				}
+				else
+				{
+					//filter member by Status
+					//if status attrs are selected,filter member.
+					//else select all members
+					if(Array.isNotEmpty(vm.multiSelectedStatusAttributeList))
+					{
+						memberListAfterStatusFilter = vm.masterMemberList.filter(function(member) {
+							var memberStatus = member.memberDto ? member.memberDto.status : member.status;
+							return Array.in(memberStatus, selectedStatuses, true);
+						});
+					}
+					//else select all members
+					else{
+						memberListAfterStatusFilter = vm.masterMemberList;
+					}
+
+					//filter member by types
+					//if types attrs are selected,filter member.
+					//else select all members
+					if(Array.isNotEmpty(vm.multiSelectedTypeAttributeList))
+					{
+						memberListAfterTypeFilter = memberListAfterStatusFilter.filter(function(member) {
+							var memberType = member.memberDto ? member.memberDto.type : member.type;
+							return Array.in(memberType, selectedTypes, true);
+						});
+					}
+					//else select all members
+					else
+					{
+						memberListAfterTypeFilter = memberListAfterStatusFilter;
+					}
+
+					//filter member by Tags
+					if(Array.isNotEmpty(selectedTags))
+					{
+						angular.forEach(memberListAfterTypeFilter, function(member)
+						{
+							var isValid = true;
+							angular.forEach(selectedTags, function(tag)
+							{
+								if(isValid)
+								{
+									var isExist = false;
+									var tags = member.memberDto ? member.memberDto.tags : member.tags;
+									angular.forEach(tags, function(memberTag) {
+										if(String.equals(tag.name, memberTag))
+											isExist = true;
+									});
+									isValid = isExist;
+								}
+							});
+
+							if(isValid)
+							{
+								memberListAfterTagFilter.push(member);
+							}
+						});
+					}
+					else{
+						memberListAfterTagFilter = memberListAfterTypeFilter;
+					}
+
+					var tempAttr = [];
+					var tempAttrMultiSelect = [];
+
+					if(Array.isNotEmpty(vm.AttributeList))
+					{
+						angular.forEach(vm.AttributeList, function(el)
+						{
+							if(el.type == 'Picklist' &amp;&amp; String.isNotEmpty(el.value))
+							{
+								tempAttr.push(el);
+							}
+							else if(el.type == 'Multi-Picklist' &amp;&amp; String.isNotEmpty(el.value)){
+								// TODO: el or el.value?
+								tempAttrMultiSelect.push(el);
+							}
+						});
+
+						angular.forEach(memberListAfterTagFilter, function(tagMember)
+						{
+							var isValid = true;
+							if(Array.isNotEmpty(tempAttr))
+							{
+								//single select logic
+								tempAttr.forEach(function(e2)
+								{
+									if(isValid)
+									{
+										var isExist = false;
+										var name = e2.name + ':' + e2.value.value;
+										if(tagMember.memberDto &amp;&amp;
+											tagMember.memberDto.attributes &amp;&amp;
+											tagMember.memberDto.attributes[name] !== undefined)
+										{
+											isExist = true;
+										}
+									}
+									isValid = isExist;
+								});
+							}
+
+							if(isValid &amp;&amp; Array.isNotEmpty(tempAttrMultiSelect))
+							{
+								//multi select
+								tempAttrMultiSelect.forEach(function(e1)
+								{
+									if(isValid)
+									{
+										var name2 = '';
+										e1.value.forEach(function(e3)
+										{
+											if(isValid)
+											{
+												var isExist2 = false;
+												name2 = e1.name + ':' + e3.value;
+												if(tagMember.memberDto &amp;&amp;
+													tagMember.memberDto.attributes &amp;&amp;
+													tagMember.memberDto.attributes[name2] != undefined &amp;&amp;
+													tagMember.memberDto.attributes[name2] != null)
+												{
+													isExist2 = true;
+												}
+												isValid = isExist2;
+											}
+										});
+									}
+								});
+							}
+
+							if(isValid)
+							{
+								memberListAfterAttrFilter.push(tagMember);
+							}
+						});
+					}
+					else{
+						memberListAfterAttrFilter = memberListAfterTagFilter;
+					}
+
+					//filter member by Testing Program
+					//if status attrs are selected,filter member.
+					//else select all members
+					if(Array.isNotEmpty(vm.productGroupTestingProgramsSelectedList))
+					{
+						memberListAfterTestFilter = memberListAfterAttrFilter;
+					}
+					else
+					{
+						memberListAfterTestFilter = memberListAfterAttrFilter;
+					}
+				}
+
+				var finalSelectedMembers = [];
+				var finalSelectedId = [];
+				for(var key in memberListAfterTestFilter)
+				{
+					var member = memberListAfterTestFilter[key].memberDto ? memberListAfterTestFilter[key].memberDto : memberListAfterTestFilter[key];
+					if(member &amp;&amp; member.id)
+					{
+						if(finalSelectedMembers.length > 0)
+						{
+							if(finalSelectedId.indexOf(member.id) &lt;= -1)
+							{
+								finalSelectedId.push(member ["id"]);
+								finalSelectedMembers.push(member);
+							}
+						}
+						else
+						{
+							finalSelectedId.push(member ["id"]);
+							finalSelectedMembers.push(member);
+							//console.log('array not exist')
+						}
+					}
+				}
+
+				vm.group.members = finalSelectedMembers;
+				vm.sortItems(vm.multiSelectedStatusAvailableList, 'value');
+				vm.sortItems(vm.multiSelectedTYpeAvailableList, 'value');
+			}
+		};
+
+		//sort items
+		vm.sortItems = function(listToSort, field)
+		{
+			if(listToSort){
+				listToSort.sort(function (a, b) {
+					return (a[field] > b[field] ? 1 : -1);
+				});
+			}
+		};
+
+		if(window.editTest)
+		{
+			vm.activeTabIndex = 4;
+			vm.activeTPTabIndex = 4;
+		}
+		else
+		{
+			vm.activeTabIndex = 0;
+			vm.activeTPTabIndex = 0;
+		}
+
+		vm.AddedList = [];
+		vm.removedList = [];
+
+		vm.isActiveTab = function(index) {
+			return index;
+		};
+
+		vm.setPartnerPopUp = function(index)
+		{
+			vm.showPartners = !vm.showPartners;
+			vm.activeTPTabIndex = 0;
+			if(vm.removedTextfind)
+				vm.removedTextfind.name = '';
+
+			if(vm.addedTextfind)
+				vm.addedTextfind.name = '';
+
+			if(vm.textfind)
+				vm.textfind.name = '';
+
+			var nbMembers = Array.getCount(vm.group.members);
+			if(nbMembers > 3 &amp;&amp; nbMembers &lt;= 10)
+			{
+				var tempHeight = parseInt(vm.setInnerModal.split("px")[0]) + (nbMembers - 3) * 20 + 5;
+				vm.setInnerModalHeight = tempHeight + "px";
+			}
+			else if(nbMembers > 10)
+			{
+				vm.setInnerModalHeight = "380px";
+			}
+			else
+			{
+				vm.setInnerModalHeight = vm.setInnerModal;
+			}
+		};
+
+		vm.getTPActiveTabIndex = function(index)
+		{
+			vm.activeTPTabIndex = index;
+			vm.AddedList = [];
+			vm.removedList = [];
+
+			if(index == 1)
+			{
+				angular.forEach(vm.group.members, function(element)
+				{
+					var exist = false;
+					angular.forEach(vm.PreviousMembers, function(pElement)
+					{
+						if(pElement.name == element.name &amp;&amp; !exist)
+							exist = true;
+					});
+
+					if(!exist)
+						vm.AddedList.push(element);
+				});
+
+				if(Array.isNotEmpty(vm.AddedList) &amp;&amp; vm.AddedList.length > 3 &amp;&amp; vm.AddedList.length &lt;= 10)
+				{
+					var tempHeight = parseInt(vm.setInnerModal.split("px")[0]) + (vm.AddedList.length - 3) * 20 + 5 ;
+					vm.setInnerModalHeight = tempHeight + "px";
+				}
+				else if(vm.AddedList.length > 10) {
+					vm.setInnerModalHeight = "380px";
+				}
+				else {
+					vm.setInnerModalHeight = vm.setInnerModal;
+				}
+
+			}
+			else if(index == 2)
+			{
+				angular.forEach(vm.PreviousMembers, function(pElement)
+				{
+					var exist = false;
+					angular.forEach(vm.group.members, function(element)
+					{
+						if(pElement.name == element.name &amp;&amp; exist == false)
+							exist = true;
+					});
+
+					if(!exist)
+						vm.removedList.push(pElement);
+				});
+
+				if(Array.isNotEmpty(vm.removedList) &amp;&amp; vm.removedList.length > 3 &amp;&amp; vm.removedList.length &lt;= 10)
+				{
+					var tempHeight = parseInt(vm.setInnerModal.split("px")[0]) + (vm.removedList.length - 3) * 20 + 5;
+					vm.setInnerModalHeight = tempHeight + "px";
+				}
+				else if(vm.removedList.length > 10)
+				{
+					vm.setInnerModalHeight = "380px";
+				}
+				else
+				{
+					vm.setInnerModalHeight = vm.setInnerModal;
+				}
+			}
+			else
+			{
+				if(Array.isNotEmpty(vm.group.members) &amp;&amp; vm.group.members.length > 3 &amp;&amp; vm.group.members.length &lt;= 10)
+				{
+					var tempHeight = parseInt(vm.setInnerModal.split("px")[0]) + (vm.group.members.length - 3) * 20 + 5;
+					vm.setInnerModalHeight = tempHeight + "px";
+				}
+				else if(vm.group.members.length > 10)
+				{
+					vm.setInnerModalHeight = "380px";
+				}
+				else
+				{
+					vm.setInnerModalHeight = vm.setInnerModal;
+				}
+			}
+		};
+
+		vm.getActiveTabIndex = function(index)
+		{
+			vm.tabsactive = true;
+			$timeout(function() { vm.activeTabIndex = index; }, 300);
+			$timeout(function() { vm.tabsactive = false; },     600);
+		};
+
+		vm.loadPicklists = function()
+		{
+			vm.picklists = {};
+			vm.callRemoteAction(remoteActions.getAllRelationshipTypes,    [], "Type",   vm.picklists);
+			vm.callRemoteAction(remoteActions.getAllRelationshipStatuses, [], "Status", vm.picklists);
+		};
+
+		//recalculate group members based on selected group attributes
+		vm.computeGroupMembers = function()
+		{
+			if(vm.group &amp;&amp; vm.group.id)
+				vm.callRemoteAction(remoteActions.computeGroupMembers, vm.group.id, "groupMembers");
+		};
+
+		vm.checkAttributes = function()
+		{
+			if(!vm.tagsByName) vm.tagsByName = vm.masterTagList.indexBy("name");
+			if(vm.group.tags)
+				vm.group.tags.forEach(function(e)
+				{
+					vm.tagsByName[e.name].isChecked = e.isChecked;
+				});
+
+			if(!vm.attrByName) vm.attrByName = vm.masterAttributeList.indexBy("name");
+			if(vm.group.attributes)
+				vm.group.attributes.forEach(function(e)
+				{
+					if(vm.attrByName[e.name]){
+						vm.attrByName[e.name].value = e.value;
+					}
+
+				});
+
+		};
+
+		vm.setEditAttributes = function()
+		{
+			vm.AttributeList.forEach(function(el)
+			{
+				if(vm.group.attributes)
+				{
+					vm.group.attributes.forEach(function(element)
+					{
+						if(el.name == element.name &amp;&amp; el.name != 'IMAGE_URL' &amp;&amp; el.name != 'DESCRIPTION' &amp;&amp; el.name != 'Type' &amp;&amp; el.name != 'Status')
+						{
+							if(!el.type || el.type == 'Text')
+							{
+								el.value = element.value;
+							}
+							else if(el.type || el.type == 'Country' ||  el.type == 'State')
+							{
+								if(el.selectionType == 'Single-Select')
+								{
+									el.value = element.value;
+									el.hide = true;
+								}
+								else
+								{
+									if(Array.isNotEmpty(el.selectedItemsList))
+									{
+										el.selectedItemsList.push(element.value);
+									}
+									else
+									{
+										el.selectedItemsList = [];
+										el.selectedItemsList.push(element.value);
+									}
+									el.countryModel = null;
+								}
+							}
+						}
+					});
+				}
+			});
+		};
+
+		vm.processError = function (message)
+		{
+			if(!message) message = "An error occurred, please try again.";
+			vm.status = message;
+			vm.errorSaving = true;
+			$timeout(function() { vm.saving = vm.errorSaving = false; vm.status = ""; }, 4000);
+		};
+
+		vm.getTag = function(name)
+		{
+			return vm.tagsByName[name];
+		};
+
+		vm.goBack = function (delay)
+		{
+			if(!delay)
+				$window.history.back(-1);
+			else
+				$timeout(() => $window.history.back(), delay);
+		};
+
+		vm.goBackToGroup = function ()
+		{
+			if(String.isEmpty(vm.groupId))
+				$window.history.back();
+			else
+				NavigationService.goToObject(vm.groupId);
+		};
+
+		// test for selected attributes or tags
+		function tagIsSelected(obj)
+		{
+			return obj.isChecked;
+		}
+
+		function attributeIsSelected(obj)
+		{
+			return !!obj.value;
+		}
+
+		// filters the available members based on the selected tags and attributes
+		vm.filterMembers = function ()
+		{
+			// filters arrays for selected tags or attributes
+			// sets selected tags and attributes to the proposed trading partner group object
+			var selectedTags       = vm.group.tags       = vm.masterTagList.filter(tagIsSelected);
+			vm.group.attributes = vm.masterAttributeList.filter(attributeIsSelected);
+			var selectedTypeStatusAttributes = vm.masterAttributeList.filter(attributeIsSelected);
+			// filter selected attributes
+			var selectedAttributes = [];
+
+			angular.forEach(vm.AttributeList, function(el)
+			{
+				if(!el) return;
+
+				if(el.type == 'Multi-Picklist' &amp;&amp; angular.isArray(el.value))
+				{
+					angular.forEach(el.value, function(item)
+					{
+						selectedAttributes.push( {name: el.name + ':' + item, value: item.value, id: el.id} );
+					});
+				}
+				else if(el.value)
+				{
+					var value = angular.isString(el.value) ? el.value : el.value.value;
+					selectedAttributes.push({name: el.name, value: value, id: el.id});
+				}
+			});
+
+			// filter status and type attributes
+			var statusObj = selectedTypeStatusAttributes.filter(obj => String.equals(obj.name, "status") );
+			var typeObj   = selectedTypeStatusAttributes.filter(obj => String.equals(obj.name, "type") );
+
+			// sets the results to the proposed trading partner group object
+			vm.group.members = vm.masterMemberList.filter(function(member)
+			{
+				//tags: member.tags = all selected tag names
+				var tagMap = member.memberDto ? member.memberDto.tags.toMap() : member.tags.toMap();
+				var tagMatch = true;
+				if(selectedTags.length)
+					//tags: member must have all selected tag names
+					tagMatch = selectedTags.every(function(tag)
+					{
+						return !!tagMap[tag.name];
+					});
+				if(!tagMatch)
+					return tagMatch;
+
+				//attributes: member attributes must match all selected attribute values
+				var attrMatch =  true;
+				if(vm.label == 'Product Group')
+				{
+					if(selectedAttributes.length)
+						attrMatch = selectedAttributes.every(function(a)
+						{
+							var ret = false;
+							var name = a.name.toLowerCase();
+							if(member.memberDto.attributes &amp;&amp; member.memberDto.attributes[a.name])
+								ret = String.equals(member.memberDto.attributes[a.name], a.value);
+							if(member.memberDto.attributes &amp;&amp; member.memberDto.attributes[name])
+								ret = String.equals(member.memberDto.attributes[name], a.value);
+							return ret;
+						});
+				}
+
+				var statusMatch =  true;
+				if(statusObj.length)
+				{
+					statusMatch = statusObj.every(function(a)
+					{
+						var memberStatus = member.memberDto ? member.memberDto.status : member.status;
+						return String.equals(a.value, memberStatus);
+					});
+				}
+
+				var typeMatch =  true;
+				if(typeObj.length)
+				{
+					typeMatch = typeObj.every(function(a)
+					{
+						var memberStatus = member.memberDto ? member.memberDto.type : member.type;
+						return String.equals(a.value, memberStatus);
+					});
+				}
+				return tagMatch &amp;&amp; attrMatch &amp;&amp; statusMatch &amp;&amp; typeMatch;
+			});
+
+			//Filter member on Tag+Status+Types selection
+			vm.filterMemberWithMultiSelect();
+		};
+
+		vm.formatAttributes = function(member)
+		{
+			var str = "";
+			if(!member.attributes) return str;
+			for(var key in member.attributes)
+				str += " / " +  key + ": " + member.attributes[key];
+			return str;
+		};
+
+		vm.prepareMembers = function(){
+			var members = [];
+			if(vm.group.members.length &amp;&amp; vm.group.members[0].memberDto){
+				vm.group.members.forEach(function(member){
+					members.push(member.memberDto);
+				});
+				vm.group.members = members;
+			}
+		};
+
+		vm.checkSaveGroup = function () {
+			if(remoteActions.getIfBatchAlreadyRunning){
+				vm.callRemoteAction(remoteActions.getIfBatchAlreadyRunning, [vm.groupId], function(result)
+				{
+					if(result)
+						vm.showWarning = true;
+					else
+						vm.saveGroup();
+				});
+			}else{
+				vm.saveGroup();
+			}
+		};
+
+		vm.saveGroup = function ()
+		{
+			if(vm.saving)
+				return console.log("Save already in progress.");
+
+			console.log('isProductGroupPage', window.isProductGroupPage);
+			if(vm.group.id != null)
+			{
+				if(window.isProductGroupPage){
+					vm.successModalMessage = 'Product group has been updated successfully';
+					vm.successModalMessageHeader = 'Edit Product Group';
+				}
+				else{
+					vm.successModalMessage = 'Trading partner group has been updated successfully';
+					vm.successModalMessageHeader = 'Edit Trading Partner Group';
+				}
+			}
+			else
+			{
+				if(window.isProductGroupPage)
+				{
+					vm.successModalMessage = 'Product group has been created successfully';
+					vm.successModalMessageHeader = 'New Product Group';
+				}
+				else
+				{
+					vm.successModalMessage = 'Trading partner group has been created successfully';
+					vm.successModalMessageHeader = 'New Trading Partner Group';
+				}
+			}
+
+			vm.showNameRequiredError = false;
+			if(String.isBlank(vm.group.name))
+			{
+				vm.showNameRequiredError = true;
+				return vm.processError("Please enter a name for this group.");
+			}
+
+			vm.filterMembers();
+			// filter and remove status and type attributes from list
+			var myTempArr = vm.group.attributes.filter(item => item.name == 'Type' || item.name == 'Status' );
+
+			vm.group.attributes = myTempArr;
+			// Get status and type id to store
+			var statusId = '';
+			var typeId = '';
+			angular.forEach(vm.masterAttributeList, function(obj)
+			{
+				if(String.equals(obj.name, 'status')) {
+					statusId = obj.id;
+					return true;
+				}
+
+				if(String.equals(obj.name, 'type')) {
+					typeId = obj.id;
+					return false;
+				}
+			});
+
+			vm.group.attributes = [];
+			// Process multiple selected statuses
+			angular.forEach(vm.multiSelectedStatusAttributeList, function(el)
+			{
+				var obj = {id: statusId, name: el.name, value: el.value};
+				var isExist = false;
+				vm.group.attributes.forEach(function(e2)
+				{
+					if(String.equals(e2.value, el.value))
+						isExist = true;
+				});
+
+				if(!isExist)
+					vm.group.attributes.push(obj);
+			});
+
+			// Process multiple selected types
+			angular.forEach(vm.multiSelectedTypeAttributeList, function(el)
+			{
+				var obj = {id: typeId, name: el.name, value: el.value};
+				var isExist = false;
+				vm.group.attributes.forEach(function(e2)
+				{
+					if(String.equals(e2.value, el.value))
+						isExist = true;
+				});
+
+				if(!isExist)
+					vm.group.attributes.push(obj);
+			});
+
+			// Process group attributes sent to controller
+			angular.forEach(vm.AttributeList, function(el)
+			{
+				if(!el) return;
+
+				if(String.isNotEmpty(el.type) &amp;&amp; el.selectionType == 'Multi-Select' &amp;&amp; angular.isArray(el.selectedItemsList))
+				{
+					angular.forEach(el.selectedItemsList, function(item) {
+						vm.group.attributes.push( {name: el.name + ':' + item, value: item.value, id: el.id} );
+					});
+				}
+				else if(el.value)
+				{
+					var value = angular.isString(el.value) ? el.value : el.value.value;
+					vm.group.attributes.push({name: el.name, value: value, id: el.id});
+				}
+			});
+
+			vm.prepareMembers();
+			vm.saving = true;
+			vm.disableBtn = true;
+
+			vm.callRemoteAction(remoteActions.saveGroup, vm.group, function(result)
+			{
+				vm.saving = false;
+				if(!result.id) {
+					vm.showError = true;
+					return vm.processError();
+				}
+
+				vm.showSuccess = true;
+				vm.cancelButtonText = "Back";
+				var action = (result.id == vm.group.id) ? "updated" : "created";
+				vm.status = vm.label + " " + result.name + " " + action + ".";
+				vm.groupId = vm.group.id = result.id;
+				vm.showLoader = false;
+			});
+		};
+
+		/*Product Test tab Code End*/
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

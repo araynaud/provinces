@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/sldsToast/sldsToast.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/sldsToast/sldsToast.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/sldsToast
+
+@description Toasts serve as a mechanism to provide information to the User after an action is taken.&lt;br/>
+It can be used to show an error, warning, success or even to provide information; each with a different style.&lt;br/>
+After a specified duration, the toast disappears automatically. It can also be closed manually with its X icon.
+&lt;center>
+	&lt;img src="https://user-images.githubusercontent.com/21251436/37160584-6b58cd94-22a5-11e8-9906-29be9598cc35.png"/>
+&lt;/center>
+
+@see {@link https://www.lightningdesignsystem.com/components/toast/|Toast - Lightning Design System}
+
+@param state       {object[]|string[]}      =?
+@param visible     {object[]|string[]}      =?
+@param variable    {optional|string}         @
+@param status      {optional|string}         @
+@param message     {optional|string}         @
+@param duration    {optional|string}         @
+@param html        {object[]}                =
+@param icon        {optional|string}         @
+@param svg         {optional|string}         @
+@param position    {optional|string}         @
+@param textAlign   {optional|string}         @
+@param onClose     {object[]}                =
+@param redirect    {object[]}                =
+
+@example
+		&lt;slds-toast on-close="lib.closeEditDialog" variable="toast.success" visible="lib.showSuccess" position="top" text-align="left" status="success" message="Document Updated successfully." duration="3000">&lt;/slds-toast>
+
+*/
+module.exports = function (ngModule)
+{
+	ngModule.component('sldsToast', {
+		bindings: {
+			state: '=?', visible: '=?', variable: '@',
+			status: '@', message: '@', duration: '@', html: '=',
+			icon: '@', svg: '@',
+			position: '@', textAlign: '@',
+			onClose: '=', redirect: '='
+		},
+		template: require('./sldsToast.html'),
+		controllerAs: 'vm',
+		controller: SldsToastController
+	});
+
+	const statusIcons = { error: 'warning', warning: 'warning', success: 'notification'};
+
+	function SldsToastController($scope, $timeout, $sce, CommonUtils, NavigationService)
+	{
+		const vm = this;
+		vm.$onInit = function()
+		{
+			CommonUtils.setVar(vm.variable, vm);
+			vm.statusIcons = statusIcons;
+
+			vm.defaultState = vm.getState(vm.state || vm);
+			vm.resetState();
+		};
+
+		vm.resetState = function() {
+			return vm.state = Object.assign({}, vm.defaultState);
+		};
+
+		vm.getState = function(from)
+		{
+			var state = {};
+			state.status = from.status ? from.status.toLowerCase() : '';
+
+			state.html =  !!from.html;
+			if(from.message)   state.message   = from.html ? $sce.trustAsHtml(from.message) : from.message;
+			if(from.duration)  state.duration  = from.duration;
+			if(from.position)  state.position  = from.position;
+			if(from.textAlign) state.textAlign = from.textAlign;
+
+			state.icon = from.icon || statusIcons[state.status];
+			state.svg  = from.svg  || "utility";
+			return state;
+		};
+
+		//events registration
+		$scope.$on('toastMessage', function(event, state)
+		{
+			state = vm.getState(state);
+			vm.state = Object.assign({}, vm.defaultState, state);
+			vm.visible = true;
+			if(NavigationService.debug)
+				console.log("sldsToast: toastMessage", vm.state);
+		});
+
+		//auto hide if duration specified
+		$scope.$watch('vm.visible', function(newVal, oldVal)
+		{
+			if(newVal &amp;&amp; !oldVal &amp;&amp; vm.state.duration > 0)
+				vm.close(vm.state.duration);
+		});
+
+		$scope.$watch('vm.message', function(newVal, oldVal)
+		{
+			if(NavigationService.debug)
+				console.log("message: message", vm.message);
+			vm.state.message = vm.message;
+			vm.$onInit();
+		});
+
+		$scope.$watch('vm.status', function(newVal, oldVal)
+		{
+			if(NavigationService.debug)
+				console.log("status: status", vm.status);
+			vm.state.status = vm.status;
+			vm.$onInit();
+		});
+
+		$scope.$on('toastClose', function(event, duration)
+		{
+			if(NavigationService.debug)
+				console.log("sldsToast: toastClose", duration);
+			vm.close(duration);
+		});
+
+		vm.show = function()
+		{
+			vm.visible = true;
+		};
+
+		vm.close = function(duration)
+		{
+			if(duration > 0)
+				return $timeout(vm.close, duration);
+
+			vm.visible = false;
+			vm.resetState();
+			if(angular.isFunction(vm.onClose))
+				vm.onClose();
+
+			if(String.isNotEmpty(vm.redirect))
+				NavigationService.goToObject(vm.redirect);
+		};
+	}
+
+	//Toast Service to send event to open / close toast notification messages
+	ngModule.service('ToastService', ToastService);
+	ToastService.$inject = ['$rootScope', 'NavigationService'];
+	function ToastService  ( $rootScope,   NavigationService )
+	{
+		var svc = this;
+		if(NavigationService.debug)
+			window.ToastService = this;
+
+		/** @method toast
+		@description Show toast notification message.
+		Usage: ToastService.toast(message, status, duration, html)
+		or     ToastService.toast({message: '&lt;b>Congratulations&lt;/b> buddy', status: 'success', duration: 5000, html: true})
+
+		message:  String (plain text or html)
+		status:   type of message: success | error | warning ( default : info)
+		duration: Number milliseconds
+		html:     true if message contains html tags / otherwise: false/null/undefined
+		**/
+		svc.toast = function(message, status, duration, html)
+		{
+			if(angular.isString(message)) {
+				message = { message: message };
+				if(status) message.status = status;
+				if(duration) message.duration = duration;
+				if(html) message.html = html;
+			}
+
+			$rootScope.$broadcast('toastMessage', message);
+		};
+
+		/** @method close
+		@description Close toast notification message.
+		duration: close after specified Number of milliseconds. if 0 or null or undefined: close immediately
+		**/
+		svc.close = function(duration)
+		{
+			$rootScope.$broadcast('toastClose', duration);
+		};
+
+		/** @method toastRemoteActionError
+		@description Display Remote Action exception in console and toast message
+		@example
+		RemoteActionService.callRemoteAction("saveTestCategory", [ptm.category, ... ], ptm.onSaveTestCategory, ptm)
+			.catch(ToastService.toastRemoteActionError);
+		@example
+		// to reset controller.loading variable:
+		RemoteActionService.callRemoteAction("saveTestCategory", [ptm.category, ptm.deleteProductTestIds, ptm.deleteGroupTestIds], ptm.onSaveTestCategory, ptm)
+			.catch(error => ToastService.toastRemoteActionError(error, ptm));
+		*/
+		svc.toastRemoteActionError = function(error, output)
+		{
+			if(output) output.loading = false;
+			console.error(error.method + ":", error.message, error);
+			svc.toast(error.method + ": " +  error.message, "error", 0);
+		};
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

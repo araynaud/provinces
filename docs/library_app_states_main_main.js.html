@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: library/app/states/main/main.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: library/app/states/main/main.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module library/components/main
+@description This is the main page controller for Document Library page.
+*/
+
+module.exports = function(ngModule)
+{
+	ngModule.controller("MainController", MainController);
+	MainController.$inject = ['$state', '$timeout', 'CommonUtils', 'RemoteActionService', 'NavigationService'];
+	function MainController  ( $state,   $timeout,   CommonUtils,   RemoteActionService,   NavigationService )
+	{
+		var lib = this;
+		window.lib = lib;
+
+		lib.labels = window.labels || {};
+
+		const DATE_FORMAT      = lib.labels.dateFormat.shortDate;
+		const DATE_TIME_FORMAT = lib.labels.dateFormat.shortDateTime;
+
+		lib.init = function()
+		{
+			// load config settings from VF page
+			lib.stencilImage = true;
+			lib.namespace = CommonUtils.getNamespacePrefix();
+			lib.categoryOptions = CommonUtils.translateOptions(window.fileUploadSettings.categories, lib.labels.category);
+			lib.internalAccountName = window.configSettings.internalAccountName;
+			lib.documentSend = false;
+
+			//AP-388 allowed extensions to open
+			lib.previewFileTypes = [ 'jpeg', 'jpg', 'bmp', 'png', 'gif' ]; //'pdf'];
+			lib.msgSendNonPublic = lib.labels.documentLibrary.onlyPublicDocCanBeSent;
+			lib.defaultListViewName = 'All Documents';
+			lib.defaultListViewLabel = lib.labels.documentLibrary.allDocuments;
+
+			lib.headerActions = [
+				{ icon: "refresh", svg: "utility", click: lib.loadData },
+				{ text: lib.labels.documentLibrary.newDocumentButton, click: lib.addDocument }
+			];
+
+			lib.headerText = [
+				[
+					{ text: lib.labels.common.edit,   click: () => lib.openListViewDialog(lib.selectedListView), show: lib.isListViewEditable },
+					{ text: lib.labels.common.newListView,    click: lib.openListViewDialog },
+					{ text: lib.labels.common.deleteListView, click: lib.openDeleteListViewDialog, show: lib.isListViewEditable }
+				],
+				[
+					{ text: () => String.plural(lib.documents.length, lib.labels.documentLibrary.item), show: () => Array.isNotEmpty(lib.documents) },
+					{ text: () => lib.labels.documentLibrary.lastUpdated + ": " + lib.lastModifiedDate,     show: () => Array.isNotEmpty(lib.documents) }
+				]
+			];
+
+			// set all available columns
+			lib.allColumns = [
+				{ field: "isSelected", label: "", sortable: false, type: "checkbox", selectAll: true, readOnly: false, classes: "check-column" },
+				{ field: "name", label: lib.labels.common.columnDocumentName, sortable: true, click: lib.downloadDocument, filterType: "string", classes: "doc-name" },
+				{ type: "button", label: lib.labels.common.customize, text: lib.labels.common.customize, title: "Generate customer-specific CPC", buttonClasses: "slds-button--brand small-button slds-m-vertical--x-small", show: lib.containsCPC, showButton: lib.isCPC, click: lib.openCustomizeDialog },
+				{ field: "categoryLabel", label: lib.labels.common.columnCategory, align: "left", sortable: true, filterType: "string" },
+				{ field: "fileType", label: lib.labels.common.columnFilteTypeCategory, align: "left", sortable: true, filterType: "string" },
+				{ field: "isSharedLabel", label: lib.labels.common.columnShared, align: "center", sortable: true, filterType: "boolean",
+					popover: lib.getPopoverInfo,
+					style: function(d) { if(d &amp;&amp; d.isShared == "Yes") return {color: '#0070d2'}; },
+					isHtml: true
+				},
+				{ field: "version", label: lib.labels.common.columnVersion, align: "right", sortable: true, filterType: "number", click: lib.openHistoryDialog },
+				{ field: "expiresDate", label: lib.labels.common.columnExpires, align: "left", sortable: true, dateFormat: DATE_FORMAT, filterType: "date", utc: true },
+				{ field: "modifiedDate", label: lib.labels.common.columnModifiedDate, align: "left", sortable: true, dateFormat: DATE_TIME_FORMAT, filterType: "date" }
+			];
+
+			lib.selectedListView = {};
+			lib.documents = [];
+
+			// set lib columns to all columns initially
+			lib.allColumns.indexBy("label", true);
+			lib.allColumns.indexBy("field", true);
+			lib.columns = lib.allColumns;
+			//dont process checkbox for select all
+			lib.defaultColumns = lib.filterFields = lib.allColumns.slice(1);
+			lib.filterFields.indexBy("label", true);
+			lib.filterFields.indexBy("field", true);
+			lib.defaultListView = { name: lib.labels.documentLibrary.allDocuments, filters: [], columns: lib.convertColumns(lib.defaultColumns)};
+
+			lib.picklists = { boolean: [lib.labels.common.yes, lib.labels.common.no], categories: window.fileUploadSettings.categories };
+
+			lib.operators = [
+				{ label: lib.labels.documentLibrary.equals,         value: "equals" },
+				{ label: lib.labels.documentLibrary.notEqualTo,     value: "not equal to" },
+				{ label: lib.labels.documentLibrary.lessThan,       value: "less than" },
+				{ label: lib.labels.documentLibrary.lessOrEqual,    value: "less or equal" },
+				{ label: lib.labels.documentLibrary.greaterThan,    value: "greater than" },
+				{ label: lib.labels.documentLibrary.greaterOrEqual, value: "greater or equal" },
+				{ label: lib.labels.documentLibrary.contains,       value: "contains" },
+				{ label: lib.labels.documentLibrary.doesNotContain, value: "does not contain" },
+				{ label: lib.labels.documentLibrary.startsWith,     value: "starts with" }
+			];
+
+			lib.operators.string  = lib.operators.slice();
+			lib.operators.boolean = lib.operators.slice(0, 2);
+			lib.operators.number  = lib.operators.slice(0, 6);
+			lib.operators.date    = lib.operators.slice(0, 6);
+
+			lib.actions = [
+				{ text: lib.labels.common.edit, click: lib.openEditDialog },
+				{ text: lib.labels.common.send, click: lib.openSendDocument }
+			];
+
+			lib.customizeDialog = {
+				visible: false,
+				actions:[
+					{ 	
+						text: lib.labels.common.download, close: false, icon: "pdf", svg: "doctype", showLoader: () => lib.loading, 
+						click: lib.openCertificate, title: "Download custom CPC in PDF format",
+						disable: () => !lib.onBehalfOf || lib.selectedDocument.generateCertificate || lib.selectedDocument.expirationDate &amp;&amp; moment(lib.selectedDocument.expirationDate).isBefore() 
+					}
+				]
+			};
+
+			lib.editDocumentDialog = {
+				visible: false,
+				columns: 3,
+				fields: [
+					{ field: "name",            type: "text",     label: lib.labels.common.columnDocumentName,   required: true, columns: 2, maxLength: 80 },
+					{ field: "category",        type: "picklist", label: lib.labels.common.columnCategory,       required: true, options: lib.categoryOptions, placeholder: lib.labels.common.columnCategory, columns: 1 },
+					{ field: "expiresDateFormatted",  type: "date",     label: lib.labels.common.columnExpirationDate, required: true, placeholder: lib.labels.common.placeholderPickADate, columns: 1,
+						modelFormat: "YYYY-MM-DD", min: "tomorrow"
+					}
+				],
+				actions: [
+					{ text: lib.labels.common.save, click: lib.saveEditDocument, showLoader: () => lib.loading, disable: lib.isDocumentInvalid }
+				]
+			};
+
+			lib.editDocumentDialog.expirationDateField = lib.editDocumentDialog.fields[2];
+
+			lib.historyDialog = {
+				visible: false,
+				columns: [
+					{ field: "name", label: lib.labels.common.columnDocumentName, sortable: false, click: lib.viewDocument },
+					{ field: "version", label: lib.labels.common.columnVersion, align: "right", sortable: false},
+					{ field: "modifiedDate", label: lib.labels.common.columnModifiedDate, align: "left", sortable: false, dateFormat: DATE_TIME_FORMAT }
+				]
+			};
+
+			lib.editListViewDialog = {
+				visible: false,
+				tabs: [ lib.labels.documentLibrary.selectFieldsToDisplay, lib.labels.common.filters ],
+				fields: [
+					{ field: "name", label: lib.labels.documentLibrary.listName, type: "text", required: true, placeholder: lib.labels.documentLibrary.listName }
+				],
+				columns: [
+					{ field: "field", label: lib.labels.common.field, type: "picklist", required: true, blankOption: lib.labels.common.pleaseSelect, options: lib.filterFields, modelField: "field", displayField: "label", change: row => lib.onFieldChange(row, true) },
+					{ field: "operator", label: lib.labels.common.operator, type: "picklist", required: true, placeholder: lib.labels.common.placeholderEnterValue, options: lib.operators.boolean, defaultValue: "equals" },
+					{ field: "value", label: lib.labels.common.value, type: "picklist", required: true, blankOption: lib.labels.common.pleaseSelect, placeholder: lib.labels.common.placeholderEnterValue, show: row => !row || !String.includes(row.field, "date")  },
+					//TODO handle date column
+					{ field: "value", label: lib.labels.common.value, type: "date", required: true, blankOption: lib.labels.common.pleaseSelect, placeholder: lib.labels.common.placeholderEnterValue, modelFormat: "YYYY-MM-DD",
+						show: row => row &amp;&amp; String.includes(row.field, "date") }
+				],
+				actions: [
+					{ text: lib.labels.common.reset ,  click: lib.resetColumns,     close: false, show: () => lib.editListViewDialog.activeTab == lib.labels.documentLibrary.selectFieldsToDisplay },
+					{ text: lib.labels.common.reset ,  click: lib.removeAllFilters, close: false, show: () => lib.editListViewDialog.activeTab == lib.labels.common.filters },
+					{ text: lib.labels.common.save,    click: lib.saveListView,     close: true,  disable: lib.disableSaveListView }
+				]
+			};
+
+			lib.sendDocumentsDialog = {
+				actions: [
+					{ text: lib.labels.common.cancel, click: lib.closeSendDocument, disable: () => lib.loading },
+					{ text: lib.labels.common.send, click: lib.sendDocument, disable: () => Array.isEmpty(lib.selectedTP) || String.isBlank(lib.requestName) || lib.documentSend}
+				]
+			};
+
+			lib.sendErrorDialog = {
+				actions: [
+					{ text: lib.labels.common.close, click: lib.closeErrorDialog }
+				]
+			};
+
+			lib.errorDialog = {
+				visible: false,
+				title: "",
+				errors: []
+			};
+
+			lib.sendDialog = {
+				visible: false
+			};
+
+			lib.sendResultDialog = {
+				visible: false
+			};
+
+			lib.deleteListViewDialog = {
+				visible: false,
+				question: lib.labels.documentLibrary.deleteViewQuestion
+			};
+
+			lib.recipientsBy = "partner";
+			lib.initSendDialogTP();
+			lib.initSendDialogProduct();
+
+			// load initial list views and data
+			lib.loadListViews();
+		}; //end init
+
+		lib.initSendDialogTP = function(){
+			lib.tpResults = [];
+			lib.selectedTP = [];
+			lib.selectedTPIds = [];
+		};
+
+		lib.initSendDialogProduct = function(){
+			lib.productResults = [];
+			lib.selectedProduct = null;
+			//AP-179
+			lib.tpResults = [];
+			lib.selectedTP = [];
+			lib.selectedTPIds = [];
+		};
+
+		lib.loadData = function()
+		{
+			// get documents
+			if(!lib.stencilImage)
+				lib.spinnerLoad = true;
+			return RemoteActionService.callRemoteAction("getDocumentsWithFilter", lib.selectedListView, lib.onLoadData);
+		};
+
+		lib.onLoadData = function(result)
+		{
+			// load documents data
+			lib.documents = result;
+
+			if(!lib.stencilImage)
+				lib.spinnerLoad = false;
+
+			lib.stencilImage = false;
+			lib.lastModifiedDate = '';
+
+			if(Array.isNotEmpty(lib.documents)) {
+				lib.lastModifiedDate = window.moment(new Date(Number(lib.documents[0].modifiedDate)));
+				lib.lastModifiedDate = lib.lastModifiedDate.format(DATE_TIME_FORMAT);
+			}
+
+			angular.forEach(lib.documents, lib.translateLabel);
+		};
+
+		//set category label = translated Category picklist item for each document
+		lib.translateLabel = function(doc) {
+			if(!lib.labels.category) return doc.categoryLabel = doc.category;
+			return doc.categoryLabel = lib.labels.category[doc.category] || doc.category || '';
+		};
+			
+		lib.openCertificate = function() 
+		{
+			RemoteActionService.callRemoteAction("getCertificateParameters", [ lib.selectedDocument.upRelationshipId, lib.selectedDocument.testingProgramId ], function(result)
+			{
+				var parameters = result;
+				if(!parameters.certificateType) parameters.certificateType = "CertificateCPC"; 
+				if(!parameters.productId)       parameters.productId = lib.selectedDocument.productId;
+
+				if(String.isNotEmpty(lib.onBehalfOf)) {
+					parameters.showOnBehalf = true;
+					parameters.uprAttributes = [lib.selectedDocument.upRelationshipId, encodeURIComponent(lib.onBehalfOf), lib.manufacturer, lib.importer, lib.privateLabeler].join('::');
+				}
+
+				lib.closeCustomizeDialog();
+				if(lib.certWindow)
+					lib.certWindow.close();
+				lib.certWindow = NavigationService.goToPage("CertificateCPC", parameters, "customCPC");
+			}, lib);
+		};
+
+		// Executes when click on document name
+		lib.downloadDocument = function(doc)
+		{
+			if (doc.fileType == 'Form')
+				lib.openFormView(doc.id, 'form'); // form view tab
+			else if(lib.isPreviewable(doc))
+				NavigationService.previewContentVersion(doc.id);
+			else
+				NavigationService.downloadContentVersion(doc.id);
+		};
+
+		lib.viewDocument = function(d){
+			window.open('/' + d.id, '_blank');
+		};
+
+		lib.openFormView = function(containerId, tabName) {
+			NavigationService.goToPage("FormView", {id: containerId, submit: "off", cancel: "on" }, tabName);
+		};
+
+		// customize dialog
+		lib.openCustomizeDialog = function(d){
+			lib.customizeDialog.visible = true;
+			lib.selectDocument(d);
+		};
+
+		lib.closeCustomizeDialog = function(){
+			lib.customizeDialog.visible = false;
+			lib.selectedDocument = {};
+			lib.manufacturer = null;
+			lib.importer = null;
+			lib.privateLabeler = null;
+			lib.onBehalfOf = null;
+		};
+
+		// open form or show document edit dialog
+		lib.openEditDialog = function(d)
+		{
+			if(d.fileType == 'Form')
+				return lib.openFormView(d.id, 'form');
+
+			lib.editDocumentDialog.visible = true;
+			lib.selectDocument(d);
+			lib.loadIcixDocumentVersions(d.documentId);
+		};
+
+		lib.closeEditDialog = function()
+		{
+			lib.editDocumentDialog.visible = false;
+			lib.saveEditDocumentError = null;
+			lib.selectedDocument = {};
+		};
+
+		// history dialog
+		lib.openHistoryDialog = function(row){
+			if(row &amp;&amp; !row.documentId) return;
+
+			if(row &amp;&amp; row.documentId) {
+				lib.selectedDocument = row;
+				lib.loadIcixDocumentVersions(row.documentId);
+			}
+			lib.fromEditDocumentDialog = !row;
+
+			lib.historyDialog.visible = true;
+			if(lib.fromEditDocumentDialog)
+				lib.editDocumentDialog.visible = false;
+		};
+
+		lib.closeHistoryDialog = function(){
+			lib.historyDialog.visible = false;
+			if(lib.fromEditDocumentDialog)
+				lib.editDocumentDialog.visible = true;
+			delete lib.fromEditDialog;
+		};
+
+		lib.selectDocument = function(d){
+			lib.selectedDocument = angular.copy(d);
+			lib.selectedDocument.modifiedDateFormattedLocale = window.moment(new Date(Number(d.modifiedDate))).format(DATE_TIME_FORMAT);
+		};
+
+		// send document
+		lib.openSendDocument = function(d){
+			lib.spinnerLoad = true;
+
+			if (!d.isPublic){
+				alert(lib.msgSendNonPublic);
+				lib.spinnerLoad = false;
+				return false;
+			}
+
+			lib.sendDialog.visible = true;
+			lib.selectDocument(d);
+
+			var reqDate = new Date().toISOString().split("T");
+			var mdyDateSplit = reqDate[0].split("-");
+			var mdyDate = mdyDateSplit[1] + "-" + mdyDateSplit[2] + "-" + mdyDateSplit[0];
+			lib.requestName = lib.labels.common.newRequest + ' - ' + mdyDate + ' ' + reqDate[1].split('.')[0];
+			// set focus on request name
+			$timeout(() => angular.element('#requestName').focus(), 1000);
+
+			var clickedId = d.id;
+			var clickedType = d.fileType;
+
+			lib.sendFileIds = [];
+			lib.sendFormIds = [];
+			if(clickedType == 'Form') {
+				lib.sendFormIds.push(clickedId);
+			} else{
+				lib.sendFileIds.push(clickedId);
+			}
+
+			lib.documents.forEach( function(element, index) {
+				if (element.isSelected){
+					var checkedId = element.id;
+					var checkedType = element.fileType;
+					var checkedPublic = element.isPublic;
+					if (checkedId != clickedId &amp;&amp; checkedPublic) {
+						if(checkedType == 'Form'){
+							lib.sendFormIds.push(checkedId);
+						}else {
+							lib.sendFileIds.push(checkedId);
+						}
+					}
+				}
+			});
+
+			// initialize comments
+			lib.comments = "";
+			// initialize recipientsBy
+			lib.recipientsBy = "partner";
+
+			RemoteActionService.callRemoteAction("loadIcixDocuments", [lib.sendFileIds, lib.sendFormIds], lib.onLoadIcixDocuments);
+		};
+
+		lib.onLoadIcixDocuments = function(result){
+			lib.sendDocumentPills = result;
+			lib.spinnerLoad = false;
+		};
+
+		//document filtering functions
+		lib.isDownloadable = doc => doc.fileType != 'Form' &amp;&amp; (String.isEmpty(doc.fileType) || !lib.previewFileTypes.contains(doc.fileType, true));
+		lib.isPreviewable  = doc => String.isNotEmpty(doc.fileType) &amp;&amp; lib.previewFileTypes.contains(doc.fileType, true);
+		lib.getPreviewUrl  = doc => NavigationService.contentVersionPreviewUrl(doc.id);
+
+		lib.isCertificate  =  doc => String.isNotEmpty(doc.certificateType);
+		lib.isCPC          = doc => doc.certificateType == "CPC" || String.startsWith(doc.fileName, "/CPC__");
+		lib.containsCPC    = () => Array.some(lib.documents, lib.isCPC);
+
+		lib.getDocumentLink = function(doc) {
+			if(doc.fileType == 'Form')
+				return NavigationService.pageUrl("FormView", { id: doc.id, submit: "off", cancel: "on", documentlibrary: "on"});
+
+			//if file preview is available
+			if(lib.isPreviewable(doc))
+				return NavigationService.contentVersionPreviewUrl(doc.id);
+
+			//if not available, download
+			return NavigationService.contentVersionDownloadUrl(doc.id);
+		};
+
+		lib.deleteDocItem = function (docId) {
+			lib.sendDocumentPills = lib.sendDocumentPills.filter(item => item.id != docId);
+			if(Array.isEmpty(lib.sendDocumentPills))
+				lib.closeSendDocument();
+		};
+
+		lib.clickRecipientsBy = function(){
+			if(lib.recipientsBy == 'partner')
+				lib.initSendDialogProduct();
+			else
+				lib.initSendDialogTP();
+		};
+
+		lib.getIcon = function(item)
+		{
+			if(!item) return;
+			console.log("sldsLookup getIcon", item.TradingPartnerType);
+
+			if(item.TradingPartnerType == "group")
+				return { icon: "new_group", iconFile: "action", classes: "slds-icon-text-default tpgroupicon" };
+
+			if(item.TradingPartnerType == "tp")
+				return { icon: "account", iconFile: "standard"};
+		};
+
+		// load trading partner(s) of the product
+		lib.selectProduct = function(product)
+		{
+			if(product != null)
+				RemoteActionService.callRemoteAction("findAccountsByProduct", [product.Id, lib.selectedTPIds], lib.onLoadTPbyProduct);
+		};
+
+		lib.onLoadTPbyProduct = function(result)
+		{
+			var tps = Array.isEmpty(result) ? [] : Array.map(result, function(res) { return { TradingPartnerId: res.Id, TradingPartnerName: res.Name, TradingPartnerType: 'tp' }; });
+			if(!lib.selectedTP) lib.selectedTP = [];
+			lib.selectedTP = lib.selectedTP.concat(tps);
+			lib.selectedTPIds = Array.distinct(lib.selectedTP, "TradingPartnerId");
+		};
+
+		lib.clearSendErrorDialog = function(){
+			$timeout(() => lib.sendDialogError = '', 3000);
+		};
+
+		lib.sendDocument = function(){
+			if(!lib.selectedTP) return;
+			//AP-83
+			lib.documentSend = true;
+			lib.spinnerLoad = true;
+
+			var accountIds = [];
+			var tpGroupIds = [];
+			angular.forEach(lib.selectedTP, function(item)
+			{
+				if(item.TradingPartnerType == "group")
+					tpGroupIds.push(item.TradingPartnerId);
+				else if(item.TradingPartnerType == "tp")
+					accountIds.push(item.TradingPartnerId);
+			});
+
+			var productId = "";
+			if(lib.recipientsBy == 'product' &amp;&amp; lib.selectedProduct)
+				productId = lib.selectedProduct.Id;
+
+			RemoteActionService.callRemoteAction("sendIcixDocumentsWithGroup", [lib.requestName, lib.comments, lib.sendFileIds, lib.sendFormIds, accountIds, productId, tpGroupIds], lib.onSendDocument);
+		};
+
+		lib.onSendDocument = function(result){
+			lib.spinnerLoad = false;
+			if (result == 'Success') {
+				lib.sendResultDialog.visible = true;
+				lib.closeSendDocument();
+			} else {
+				lib.errorDialog.visible = true;
+				lib.errorDialog.title = lib.labels.documentLibrary.sendFailedReasons;
+				lib.errorDialog.errors = [result];
+				lib.closeSendDocument();
+			}
+		};
+
+		lib.closeSendResultDialog = function(){
+			lib.sendResultDialog.message = "";
+			lib.documentSend = false;
+			lib.closeSendDocument();
+			lib.loadData();
+		};
+
+		lib.closeSendDocument = function(){
+			lib.sendDialog.visible = false;
+			// reset selected document
+			lib.selectedDocument = {};
+			lib.recipientsBy = "";
+			lib.initSendDialogTP();
+			lib.initSendDialogProduct();
+		};
+
+		// document verions
+		lib.loadIcixDocumentVersions = function(id){
+			RemoteActionService.callRemoteAction("loadIcixDocumentVersions", id, lib.onLoadDocumentVersions);
+		};
+		lib.onLoadDocumentVersions = function(versions){
+			lib.selectedDocument.versions = versions;
+		};
+
+		lib.saveEditDocument = function(){
+			// do save edit
+			if(lib.isDocumentInvalid())
+				return false;
+
+			var doc = {
+				id:       lib.selectedDocument.id,
+				name:     lib.selectedDocument.name,
+				category: lib.selectedDocument.category,
+				isPublic: lib.selectedDocument.isPublic
+			};
+			return RemoteActionService.callRemoteAction("saveIcixDocumentWithFormattedDate", [doc, lib.selectedDocument.expiresDateFormatted], lib.onSaveDocumentWithDate, lib);
+		};
+
+		lib.onSaveDocumentWithDate = function(result){
+			lib.spinnerLoad = false;
+			if (result.status == 'ok' ) {
+				lib.showSuccess = true;
+				lib.saveEditDocumentError = null;
+				lib.closeEditDialog();
+				lib.loadData();
+			} else {
+				lib.saveEditDocumentError = result.message;
+			}
+		};
+
+		lib.closeErrorDialog = function(){
+			lib.errorDialog.visible = false;
+		};
+
+		//condition to disable Save button edit document dialog
+		lib.isDocumentInvalid = () => !lib.selectedDocument || !lib.selectedDocument.category || !lib.editDocumentDialog.expirationDateField.isValid || lib.checkDocumentNameLength(lib.selectedDocument.name);
+
+		//Check length of document if length is greater than 80
+		lib.checkDocumentNameLength = function(documentName)
+		{
+			lib.docNameError = '';
+			//Document Name is blank message will display.
+			if(String.isBlank(documentName)) {
+				lib.docNameError = lib.labels.documentLibrary.documentNameRequired;
+				return true;
+			}
+			//Check length of document if length is greater than 80
+			else if(documentName.length > 80) {
+				lib.docNameError = lib.labels.documentLibrary.documentNameCharactersValidation;
+				return true;
+			}
+			return false;
+		};
+
+		lib.searchDocumentsFilter = function(listView)
+		{
+			if(String.isBlank(lib.searchText))
+				return true;
+
+			return  String.includes(listView.name, lib.searchText)
+				||	String.includes(listView.categoryLabel, lib.searchText)
+				||	String.includes(listView.fileType, lib.searchText)
+				||	String.includes(listView.isSharedLabel, lib.searchText)
+				||	String.includes(listView.version, lib.searchText);
+		};
+
+		// =============== Delete List View Dialog functions ===============
+		lib.openDeleteListViewDialog = function(){
+			lib.deleteListViewDialog.visible = true;
+		};
+
+		lib.deleteListView = function(){
+			lib.spinnerLoad = true;
+			RemoteActionService.callRemoteAction("deleteListViewConfiguration", lib.selectedListView.id, lib.onDeleteListViewConfiguration);
+		};
+
+		lib.onDeleteListViewConfiguration = function(result)
+		{
+			lib.spinnerLoad = false;
+			lib.deleteListViewDialog.visible = false;
+			Array.remove(lib.listViews, lib.selectedListView);
+			lib.selectListView(lib.getDefaultListView());
+			lib.loadData();
+		};
+
+		// =============== List View load/save functions ===============
+		lib.getDefaultListView = function(){
+			if(Array.isNotEmpty(lib.listViews))
+				lib.defaultListView = lib.listViews.find(lv => lv.name == lib.defaultListViewName || lv.name == lib.defaultListViewLabel);
+			return lib.defaultListView;
+		};
+
+		lib.loadListViews = function()
+		{
+			// load custom list views
+			lib.spinnerLoad = true;
+			return RemoteActionService.callRemoteAction("getAllListViewConfiguration", null, lib.onloadListViews, lib);
+		};
+
+		//on loading list views: convert old date filter from timestamp to YYYY-MM-DD
+		lib.convertDateFilters = function(listView)
+		{
+			const timestampFilters = listView.filters.filter(f => String.includes(f.field, "Date") &amp;&amp; !isNaN(f.value));
+			angular.forEach(timestampFilters, function(filter) {
+				dt = new Date(Number(filter.value));
+				filter.value = dt.getUTCFullYear() + "-" + dt.getUTCMonth() + "-" + dt.getUTCDate() ;
+			});
+		};
+
+		lib.onloadListViews = function(result)
+		{
+			lib.listViews = result;
+			angular.forEach(lib.listViews, lib.convertDateFilters);
+			angular.forEach(lib.listViews, item => item.click = () => lib.selectListView(item));
+
+			// check if default list view is created
+			var defaultViewExists = lib.listViews.some(lv => lv.name == lib.defaultListViewName || lv.name == lib.defaultListViewLabel);
+			// create default list view with All Documents and columns, if it doesnt exist
+			if(!defaultViewExists)
+				return RemoteActionService.callRemoteAction("updateListViewConfiguration", [ lib.defaultListView.id, lib.defaultListView ], lib.onCreateDefaultListView, lib);
+
+			lib.spinnerLoad = false;
+			lib.selectedListView = lib.getDefaultListView();
+			lib.listViews.move(lib.selectedListView, 0);
+			lib.selectedListView.name = lib.defaultListViewLabel;
+			return lib.loadData();
+		};
+
+		lib.onCreateDefaultListView = function(result){
+			// add default listview to custom list views
+			lib.spinnerLoad = false;
+			lib.defaultListView = result;
+			lib.listViews.unshift(result); //put at the top of the list
+			lib.selectListView(result);
+		};
+
+		lib.isListViewEditable = function(){
+			return lib.selectedListView &amp;&amp; lib.selectedListView.name != lib.defaultListViewName &amp;&amp; lib.selectedListView.name != lib.defaultListViewLabel;
+		};
+
+		lib.selectListView = function(listView)
+		{
+			console.log("selectListView:", listView);
+			// mark current list view as selected
+			if(listView) {
+				lib.selectedListView = listView;
+				listView.click = () => lib.selectListView(listView);
+			}
+
+			lib.applyListViewColumns();
+			lib.loadData();
+		};
+
+		// get selected list view columns
+		lib.applyListViewColumns = function(listView)
+		{
+			// send columns in order to lib.columns of slds-table component
+			if(!listView)
+				listView = lib.selectedListView;
+
+			//if view has no columns selected: show all columns by default
+			if(Array.isEmpty(lib.selectedListView.columns))
+				return lib.columns = lib.allColumns;
+
+			lib.columns = [ lib.allColumns[0] ];
+			angular.forEach(lib.selectedListView.columns, function(col) {
+				var column = col.field ? lib.defaultColumns.by.field[col.field] : lib.defaultColumns.by.label[col.label];
+				if(column)
+					lib.columns.push(column);
+			});
+			return lib.columns;
+		};
+
+		// =============== Edit List View Dialog functions ===============
+		lib.openListViewDialog = function(listView)
+		{
+			lib.editListViewDialog.visible = true;
+			lib.editListViewDialog.activeTab = lib.labels.documentLibrary.selectFieldsToDisplay;
+			lib.editListView = listView ? angular.copy(listView) : { name: "", filters: [], columns: [] };
+			lib.selectedListViewIndex = lib.listViews.indexOf(listView);
+			lib.selectedColumnLabels = Array.distinct(lib.editListView.columns, "label").toMap();
+			if(!listView) {
+				lib.resetColumns(); //new list view: select all columns by default
+			}
+			else {
+				lib.editListViewDialog.availableColumns = lib.filterFields.filter(col => !(col.label in lib.selectedColumnLabels));
+				lib.editListViewDialog.selectedColumns  = lib.filterFields.filter(col =>   col.label in lib.selectedColumnLabels );
+			}
+
+			angular.forEach(lib.editListView.filters, row => lib.onFieldChange(row, false));
+		};
+
+		lib.onFieldChange = function(row, clearValue)
+		{
+			if(!row || !row.field) return delete row.$options; //use default options
+
+			var field = CommonUtils.getVar(["by", "field", row.field], lib.filterFields);
+			if(!field) return;
+
+			row.label = field.label;
+			if(clearValue) row.value = null;
+			row.$options = { operator: lib.operators[field.filterType], value: lib.picklists[field.filterType] };
+		};
+
+		lib.convertColumns = function(selectedColumns)
+		{
+			return Array.map(selectedColumns, function(col, index) {
+				return { order: index + 1, field: col.field, label: col.label };
+			});
+		};
+
+		//disable save if required fields are not filled.
+		lib.disableSaveListView = () => !lib.editListView || String.isBlank(lib.editListView.name) || Array.isEmpty(lib.editListViewDialog.selectedColumns);
+
+		lib.saveListView = function(listView)
+		{
+			if(!listView)
+				listView = lib.editListView;
+
+			listView.columns = lib.convertColumns(lib.editListViewDialog.selectedColumns);
+			//remove incomplete filters
+			lib.editListView.filters = lib.editListView.filters.filter(f => String.isNotEmpty(f.field) &amp;&amp; String.isNotEmpty(f.value));
+
+			// call remote action to save list view name, columns and filters
+			lib.spinnerLoad = true;
+			RemoteActionService.callRemoteAction("updateListViewConfiguration", [listView.id, listView], lib.onUpdateListView).catch(lib.onUpdateListViewError);
+		};
+
+		//result = inserted/modified listView (with id)
+		lib.onUpdateListView = function(result)
+		{
+			lib.spinnerLoad = false;
+			//place in the list view menu
+			if(lib.selectedListViewIndex == -1)
+				lib.listViews.push(result);
+			else if(lib.selectedListViewIndex != null)
+				lib.listViews[lib.selectedListViewIndex] = result;
+
+			lib.selectedListViewIndex = null;
+
+			lib.selectListView(result);
+			lib.applyListViewColumns();
+		};
+
+		lib.onUpdateListViewError = function(err)
+		{
+			console.error(err);
+			lib.spinnerLoad = false;
+			lib.errorDialog.visible = true;
+			lib.errorDialog.title = lib.labels.documentLibrary.updateFailedReasons;
+			lib.errorDialog.errors = [err];
+		};
+
+		lib.closeEditListView = function(){
+			lib.editListViewDialog.visible = false;
+		};
+		// =============== END Edit List View Dialog functions ===============
+
+		lib.checkFilterValue = function(type, value)
+		{
+			if(type == "date")
+				return window.moment(value, DATE_FORMAT).isValid();
+			return true;
+		};
+
+		lib.resetColumns = function() {
+			lib.editListViewDialog.availableColumns  = [];
+			lib.editListViewDialog.selectedColumns = lib.filterFields.slice();
+		};
+
+		lib.removeAllFilters = function() {
+			if(Array.isNotEmpty(lib.editListView.filters))
+				lib.editListView.filters = [];
+		};
+
+		lib.getPopoverInfo = function(d){
+			var body = "";
+			if (d.isShared != "Yes")
+				return body;
+			// partners
+			//Giordi
+			if(Array.isNotEmpty(d.partners))
+			{
+				body += '&lt;div class="popover_title" style="color:#000000">&lt;b>' + lib.labels.common.tradingPartners + '&lt;/b> (' + d.partners.length + ') &lt;/div>';
+				d.partners.forEach( function(partner, index) {
+					body += '&lt;div class="link">&lt;a href="/' + partner.id + '">' + partner.name + '&lt;/a>&lt;/div>';
+				});
+			}
+
+			// groups
+			if(Array.isNotEmpty(d.sharedGroups))
+			{
+				body += '&lt;div class="popover_title" style="color:#000000">&lt;b>TP Groups&lt;/b> (' + d.sharedGroups.length + ')&lt;/div>';
+				d.sharedGroups.forEach( function(group, index) {
+					body += '&lt;div class="link">&lt;a href="/' + group.id + '">' + group.name + ' (' + group.pCount + ')&lt;/a>&lt;/div>';
+				});
+			}
+
+			// products
+			if(Array.isNotEmpty(d.products))
+			{
+				body += '&lt;div class="popover_title" style="color:#000000">&lt;b>Products&lt;/b> (' + d.products.length + ')&lt;/div>';
+				d.products.forEach( function(product, index) {
+					body += '&lt;div class="link">&lt;a href="/' + product.id + '">' + product.name + '&lt;/a>&lt;/div>';
+				});
+			}
+
+			return body;
+		};
+
+		lib.addDocument = function(){
+			$state.go('addDocument');
+		};
+
+		// execute init method of libray
+		lib.init();
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

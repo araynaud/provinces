@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/sldsDatepicker/sldsDatepicker.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/sldsDatepicker/sldsDatepicker.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/sldsDatepicker
+
+@description The slds-datepicker is a component to display and capture a date in a variety of formats.
+It uses {@link https://www.lightningdesignsystem.com/components/datepickers/|Salesforece Lightning Design System} styles
+and {@link https://momentjs.com/|Moment.js} for date operations.
+
+&lt;center>
+	&lt;img src="https://user-images.githubusercontent.com/21251436/37166326-9734e174-22b3-11e8-9a17-a1dee34b164f.png"/>
+&lt;/center>
+
+@param model                {String|Number|Date}  =? the selected date value. type depends on modelFormat&lt;br/>(Date | formatted String | timestamp Number/String)
+@param isValid              {optional|Boolean}    =? true if selected model value is valid&lt;br/>(valid Date and between min / max if specified)
+@param modelFormat          {optional|String}     @  date format used to load/save model value.&lt;br/>default/empty: Date | 'timestamp': timestamp in a string | YYYY-MM-DD
+@param viewFormat           {optional|String}     @  date format used to display date (default: 'Do MMMM YYYY')
+@param placeholder          {optional|String}     @  placeholder text shown when no date selected
+@param locale               {optional|String}     @  user locale (by default, current browser locale)
+@param min                  {optional|String}     @  minimum allowed date (can be an offset in days)
+@param max                  {optional|String}     @  maximum allowed date (can be an offset in days)
+&lt;br/>Min and Max date can be specified as an absolute date (using "YYYY-MM-DD" format),
+&lt;br/>or using one of the keywords: "today", "now", "tomorrow", "yesterday", "next day", "last day", 
+&lt;br/>"next week", "last week", "next month", "last month", "next year", "last year"
+
+@param firstWeekDaySunday   {optional|Boolean}    =? true: first day column = Sunday | default: Monday
+@param utc                  {optional|Boolean}    =? true: format and select date with midnight UTC time | default: midnight current timezone
+@param readOnly             {optional|Boolean}    =? true: make read-only | default: editable
+@param required             {optional|Boolean}    &lt;  true: make input field value required | default: not required
+@param disabled             {optional|Boolean}    =  true: disable input field  | default: enabled
+@param disableClear         {optional|Boolean}    =  true: when editable, disable clearing selected date | default: enabled if editable
+@param keepOpen             {optional|Boolean}    =? true: keep the calendar popup open on selection | default: close on selection
+@param hideErrors           {optional|Boolean}    =? true: hide validation error messages | default: show them
+
+@param id                   {optional|String}     @  id of this slds-datepicker element
+@param inputId              {optional|String}     @  id of the text input containing the date view value
+@param errorId              {optional|String}     @  id of the error message element
+@param variable             {optional|String}     @  global variable name
+@param position             {optional|String}     @  'fixed' for use in a dialog (calculates position, makes calendar popup visible over all other elements), otherwise relative
+
+@param onChange             {optional|function}   &amp; function to call when selected date changes.
+
+@example 
+//Store model as Date object, between tomorrow and next week
+&lt;slds-datepicker variable="sd1" id="sdp1" model="vm.date1" 
+first-week-day-sunday="false" placeholder="Pick a date SLDS" 
+min="tomorrow" max="next week">&lt;/slds-datepicker>
+
+@example 
+//Store model as formatted string "YYYY-MM-DD"
+//minimim allowed value: "2016-01-01"
+&lt;slds-datepicker variable="sd2" model="vm.date2" 
+placeholder="Pick a date formatted" model-format="YYYY-MM-DD" view-format="MMMM Do, YYYY" 
+min="2016-01-01">&lt;/slds-datepicker>
+
+@example
+//Store model as numeric timestamp, position fixed
+//allowed values: between "last month" and "next year" 
+&lt;slds-datepicker variable="sd3" model="vm.date3" first-week-day-sunday="true" 
+placeholder="Pick a date timestamp" model-format="timestamp" 
+min="last month" max="next year" position="fixed" keep-open="true">&lt;/slds-datepicker>
+
+@example
+Dynamic properties as used in slds-table / edit-field
+&lt;slds-datepicker ng-if="!vm.isReadOnly() &amp;&amp; vm.isDate()" 
+model="vm.model[field]" view-format="{{vm.dateFormat}}" 
+model-format="timestamp" placeholder="{{vm.properties.templateOptions.placeholder}}" 
+position="fixed" min="{{vm.properties.min}}" max="{{vm.properties.max}}">&lt;/slds-datepicker>
+
+@see {@link https://www.lightningdesignsystem.com/components/datepickers/|Datepickers - Lightning Design System}
+@see {@link https://momentjs.com/docs/#/displaying/format/|Displaying Formats - momentjs.com}
+@see {@link https://momentjs.com/|Momentjs.com}
+
+@requires Moment.js 
+*/
+
+module.exports = function(ngModule)
+{
+	ngModule.component('sldsDatepicker', {
+		bindings: { model: '=?', modelFormat: '@', viewFormat: '@', placeholder: '@',
+			locale: '@', min: '@', max: '@', isValid: '=?', utc: '=?', firstWeekDaySunday: '=?',
+			readOnly: '=?', keepOpen: '=?', hideErrors: '=?',
+			id: '@', inputId: '@', errorId: '@', variable: '@', disabled: '=?', disableClear: '=?',
+			position: '@', required: '&lt;', onChange: '&amp;'
+		},
+		template: require('./sldsDatepicker.html'),
+		controllerAs: 'vm',
+		controller: SldsDatepickerController
+	});
+
+	//valid date keywords with n = value, u = unit
+	const keywords = {
+		today: 0,
+		now: 0,
+		tomorrow:    1,
+		yesterday:  -1,
+		"next day":  1,
+		"last day": -1,
+		"next week":  {n:  1, u:"week"},
+		"last week":  {n: -1, u:"week"},
+		"next month": {n:  1, u:"month"},
+		"last month": {n: -1, u:"month"},
+		"next year":  {n:  1, u:"year"},
+		"last year":  {n: -1, u:"year"}
+	};
+
+	const maxCalendarHeight = 320;
+
+	SldsDatepickerController.$inject = ['$scope', '$document', '$element', 'CommonUtils', 'FormValidationService'];
+	function SldsDatepickerController  ( $scope,   $document,   $element,   CommonUtils,   FormValidationService )
+	{
+		var vm = this;
+		CommonUtils.setVar(vm.variable, vm);
+
+		vm.labels = window.labels || { 
+			common: {
+				theDateMustBe: "The date must be",
+				orLater: "or later.",
+				orEarlier: "or earlier."
+			},
+			dateFormat: {
+				shortDate: "MM/DD/YYYY",
+				longDate:  "MMMM Do, YYYY"
+			}
+		};
+
+		const DATE_FORMAT = vm.viewFormat || vm.labels.dateFormat.longDate;
+
+		vm.$onInit = function()
+		{
+			vm.calendarOpened = false;
+			vm.element = $element;
+
+			vm.days = [];
+			vm.months = vm.labels.months;
+			vm.placeholder = vm.placeholder || '';
+			vm.locale = vm.locale || 'en';
+			moment.locale(vm.locale);
+
+			vm.today = vm.loadDate();
+			vm.dayAbbr = angular.copy(vm.labels.daysShort);
+			if(vm.firstWeekDaySunday)
+				vm.dayAbbr.unshift(vm.dayAbbr.pop());
+
+			if(vm.position == 'fixed')
+				vm.style = { position: vm.position };
+
+			vm.classList = ['slds-datepicker', 'slds-datepicker-input'];
+			if(vm.id)  vm.classList.push(vm.id);
+
+			if(vm.min) vm.minDate = vm.loadDate(vm.min);
+			if(vm.max) vm.maxDate = vm.loadDate(vm.max);
+
+			vm.refresh(true);
+			$scope.$watch('vm.model', vm.refresh);
+		};
+
+		//to set date value from non-angular page
+		vm.setValue = function(dt)
+		{
+			vm.model = dt;
+			$scope.$apply();
+		};
+
+		//to call on initialization and when vm.model changes
+		vm.refresh = function(newValue, oldValue)
+		{
+			if(oldValue === newValue) return;
+
+			vm.calendarDate = vm.setUtc(vm.loadDate(vm.model));
+			vm.viewValue = vm.model ? vm.calendarDate.format(DATE_FORMAT) : '';
+			if(vm.model)
+			{
+				vm.selectedDate = vm.setUtc(vm.loadDate(vm.model));
+				vm.validate(vm.calendarDate);
+			} 
+			//console.log("sldsDatepicker refresh", vm.model, vm.viewValue);
+			if(angular.isFunction(vm.onChange))
+				vm.onChange();
+
+			generateCalendar(vm.calendarDate);
+		};
+
+		vm.setUtc = function(dt)
+		{
+			if(vm.utc &amp;&amp; dt &amp;&amp; dt._isAMomentObject) 
+				dt.utc();
+			return dt;
+		};
+
+		//convert date to moment object
+		vm.loadDate = function(inputDate)
+		{
+			var loadFunction = vm.utc ? moment.utc : moment;
+			if(!inputDate) return loadFunction();
+
+			var isNumericOffset = !isNaN(inputDate) &amp;&amp; inputDate &lt; 10000; //check if input date is numeric value but not timestamp
+			if(inputDate in keywords || isNumericOffset)
+			{
+				var date = loadFunction();
+				var offset = keywords[inputDate] || inputDate;
+				if(offset &amp;&amp; offset.n) 
+					date.add(offset.n, offset.u);
+				else if(offset) 
+					date.add(offset, "day");
+
+				//console.log(vm.variable || "", "loadDate", offset, date.toDate().toDateString());
+				return date;
+			}
+
+			if(!vm.modelFormat || vm.modelFormat == 'date') 
+				return loadFunction(inputDate);
+			
+			if(vm.modelFormat == 'timestamp')
+				return loadFunction(Number(inputDate));
+
+			return loadFunction(inputDate, vm.modelFormat);
+		};
+
+		var generateCalendar = function(date) 
+		{
+			var lastDayOfMonth = date.endOf('month').date(),
+				month = date.month(),
+				year = date.year(),
+				n = 1;
+		
+			var firstWeekDay = vm.firstWeekDaySunday ? date.set('date', 2).day() : date.set('date', 1).day();
+			if (firstWeekDay !== 1)
+				n -= firstWeekDay - 1;
+
+			//Code to fix date issue
+			if(n == 2) 
+				n = -5;
+
+			vm.month = vm.months[month];
+			vm.year = date.format('YYYY');
+			vm.days = [];
+			
+			for (var i = n; i &lt;= lastDayOfMonth; i++) {
+				var dt = i > 0 ? {day: i, month: month + 1, year: year} : {};
+				dt.selected = vm.isSelected(dt);
+				vm.days.push(dt);
+			}
+
+			// Iterate over days array @Swapnesh
+			var newArr = [];
+			var myArr = [];
+			var weekNum = 0;
+			newArr[weekNum] = [];
+			myArr = vm.days;
+			for(var i = 1; i &lt;= myArr.length; i++) 
+			{
+				newArr[weekNum].push(myArr[i-1]);
+				if(i % 7 == 0) 
+				{
+					weekNum = weekNum + 1;
+					newArr[weekNum] = [];
+				}
+			}
+			vm.days = newArr;
+		};
+
+		vm.isToday = function(dt) 
+		{
+			return vm.isEqual(dt, vm.today);
+		};
+
+		vm.isSelected = function(dt) 
+		{
+			return vm.isEqual(dt, vm.selectedDate);
+		};
+
+		vm.isEqual = function(dt, momentDate) 
+		{
+			if(!dt || !dt.day || !momentDate) return false;
+
+			var dtd = new Date(dt.year, dt.month - 1, dt.day);
+			return momentDate.isSame(dtd, 'day');
+		};
+
+		vm.showCalendar = function() 
+		{
+			vm.calendarOpened = true;
+			if(vm.position != 'fixed' || !$element || !$element.length) return;
+
+			vm.box = $element[0].getBoundingClientRect();
+			vm.style = { position: vm.position };
+			vm.style.left = vm.box.left + 'px';
+			
+			//vertical positioning: if too low to fit in window, place to bottom of the screen
+			var top = vm.box.top + vm.box.height;
+			top = Math.min(top, window.innerHeight - maxCalendarHeight);
+			vm.style.top = top + 'px';
+			//console.log('showCalendar', vm.style);
+		};
+
+		vm.closeCalendar = function() 
+		{
+			vm.calendarOpened = false;
+		};
+
+		vm.prevYear = function()
+		{
+			vm.calendarDate.subtract(1, 'Y');
+			generateCalendar(vm.calendarDate);
+		};
+
+		vm.prevMonth = function()
+		{
+			vm.calendarDate.subtract(1, 'M');
+			generateCalendar(vm.calendarDate);
+		};
+
+		vm.nextMonth = function()
+		{
+			vm.calendarDate.add(1, 'M');
+			generateCalendar(vm.calendarDate);
+		};
+
+		vm.nextYear = function()
+		{
+			vm.calendarDate.add(1, 'Y');
+			generateCalendar(vm.calendarDate);
+		};
+
+		vm.selectDate = function(event, date)
+		{
+			event.preventDefault();
+			if(!date || !date.day) return;
+
+			const prevSelectedDate = vm.selectedDate;
+			const dtd = [date.year, date.month - 1, date.day];
+			vm.selectedDate = vm.utc ? moment.utc(dtd) : moment(dtd);
+			//console.log(vm.variable||"", "selectDate", date, dtd, vm.selectedDate);
+
+			const isValid = vm.validate(vm.selectedDate);
+			vm.viewValue = isValid ? vm.selectedDate.format(DATE_FORMAT) : '';
+			vm.model = isValid ? vm.storeDate(vm.selectedDate) : null;
+
+			var diff = vm.selectedDate.diff(prevSelectedDate);
+			if(diff !== 0)
+				FormValidationService.setFormDirty();
+
+			vm.closeCalendar();
+		};
+
+		vm.clear = function()
+		{
+			if(vm.disabled || vm.disableClear) return;
+
+			vm.selectedDate = null;
+			vm.viewValue = '';
+			vm.model = null;
+			FormValidationService.setFormDirty();
+		};
+
+		vm.validate = function(momentDate)
+		{
+			vm.errorMessage = null;
+			if(!momentDate.isValid())
+				vm.errorMessage = momentDate.format(); //Invalid date
+			else if(vm.minDate &amp;&amp; momentDate.isBefore(vm.minDate, 'day')) 
+				vm.errorMessage = vm.labels.common.theDateMustBe + ' ' + vm.minDate.format(DATE_FORMAT) + ' ' + vm.labels.common.orLater;
+			else if(vm.maxDate &amp;&amp; momentDate.isAfter(vm.maxDate, 'day'))
+				vm.errorMessage = vm.labels.common.theDateMustBe + ' ' + vm.maxDate.format(DATE_FORMAT) + ' ' + vm.labels.common.orEarlier;
+
+			vm.isValid = !vm.errorMessage;
+
+			return !vm.errorMessage;
+		}
+
+		vm.isDateValid = function()
+		{
+			return !vm.errorMessage;
+		}
+
+		//output date, timestamp long number or formatted string
+		vm.storeDate = function(momentDate)
+		{
+			if(!vm.selectedDate) return null;
+			
+			vm.setUtc(momentDate);
+
+			if(!vm.modelFormat || vm.modelFormat == 'date') 
+				return momentDate.toDate();
+			
+			if(vm.modelFormat == 'timestamp')
+				return momentDate.valueOf().toString();
+
+			return momentDate.format(vm.modelFormat);
+		};
+
+		//if clicked outside of calendar, close it
+		$document.on('click', function(e) 
+		{
+			if (!vm.calendarOpened || !e.target) return;
+
+			for (var element = e.target; element; element = element.parentNode) 
+			{
+				var classNames = element.className || '';
+				if(angular.isDefined(classNames.baseVal))
+					classNames = classNames.baseVal;
+				if(element.id)
+					classNames += ' ' + element.id;
+
+				for (var i = 0; i &lt; vm.classList.length; i++)
+					if (classNames.indexOf(vm.classList[i]) > -1)
+						return;
+			}
+
+			vm.closeCalendar();
+		});
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

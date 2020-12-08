@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/services/SoqlService.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/services/SoqlService.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/services/SoqlService
+
+@description Angular service that can be used to run SOQL queries and return query results without Apex code.&lt;br/>
+Queries can be entered with or without namespace and Query Results are returned as a JSON array of objects (1 per returned record).&lt;br/>
+Field names of query result objects can be modified depending on available options.
+This service can also delete 1 or multiple query result records to cleanup data during testing / debugging.
+
+A test page SoqlQueryTest uses this service.
+
+@requires jsforce
+@requires $q
+@requires common/services/CommonUtils
+
+@example
+var query = "SELECT Id, Name, Container_Answer__c Supplied_Answer__c \
+FROM Container_Answer__c \
+WHERE Container__c == :containerId";
+
+var parameters = {containerId: "a0D210000032wfgAAC"};
+
+SoqlService.query(query, parameters).then(function(results){
+	console.log('existingCV',  results);
+	svc.documentRecords = results;
+});
+*/
+module.exports = function (ngModule)
+{
+	'use strict';
+
+	const SOQL_COUNT = "COUNT(Id) totalCount";
+	const SOQL_TOKENS = ["SELECT", "FROM", "WHERE", "ORDER BY", "GROUP BY"];
+
+	ngModule.service('SoqlService', SoqlService);
+	SoqlService.$inject = ['$q', 'CommonUtils'];
+	function SoqlService  ( $q,   CommonUtils )
+	{
+		var svc = this;
+		var connection;
+
+		var options = svc.options = {
+			insertPrefix: true,
+			cleanup: true,
+			parseJson: true,
+			removeNull: true
+		};
+
+		svc.init = function()
+		{
+			svc.namespacePrefix = CommonUtils.getNamespacePrefix();
+			svc.error = null;
+			svc.actualQuery = null;
+
+			svc.meta = {};
+			svc.sobjects = [];
+
+			//svc.describeGlobal();
+			svc.metadata = {};
+
+			if(!window.jsforce)
+				return console.error("SoqlService requires jsforce.");
+
+			svc.getConnection();
+		};
+
+		svc.getConnection = function()
+		{
+			if(!connection)
+				connection = new window.jsforce.Connection({ accessToken: window.configSettings.sessionId });
+			return connection;
+		};
+
+		//execute SOQL query with parameters
+		svc.query = function (soql, params)
+		{
+			// setup the promise
+			svc.error = null;
+
+			var deferred = $q.defer();
+
+			if(options.insertPrefix)
+				soql = svc.insertNamespacePrefix(soql);
+			if(params)
+				soql = svc.insertParameters(soql, params);
+
+			svc.actualQuery = soql.trim();
+
+			connection.query(soql, function(err, result) {
+				if(err) {
+					svc.error = err;
+					console.error(err);
+					deferred.reject(err);
+				}
+				else {
+					var records = result.records;
+					svc.sobjectType = CommonUtils.getVar([ 0, "attributes", "type"], records);
+					if(options.cleanup)
+						records = svc.cleanupSobject(result.records);
+					console.log("SoqlService", "query result:", records);
+					deferred.resolve(records);
+				}
+			});
+
+			return deferred.promise;
+		};
+
+		//insert org namespace prefix before every custom field or object name.
+		svc.insertNamespacePrefix = function(soql, namespace)
+		{
+			namespace = namespace || svc.namespacePrefix;
+			if(String.isEmpty(soql) || String.isEmpty(namespace))
+				return soql;
+
+			if(String.isNotEmpty(namespace) &amp;&amp; !namespace.endsWith("__"))
+				namespace += "__";
+
+			var words = soql.split(/[, \t)(\.\n]/).distinct().filter( word => !word.startsWith(namespace) &amp;&amp; CommonUtils.isCustomName(word));
+			for(var i = 0; i &lt; words.length; i++)
+			{
+				var prefixed = namespace + words[i];
+				var regex = new RegExp( "\\b" + words[i] + "\\b", "g");
+				soql = soql.replace(regex, prefixed);
+			}
+
+			return soql;
+		};
+
+		//query with 1 column: get distinct value for first field, without null
+		svc.getDistinctValues = function(result)
+		{
+			return result.distinct(row => Object.getFirstValue(row, true), true);
+		};
+
+		//replace :parameter with null or 'value'
+		svc.insertParameters = function(soql, params)
+		{
+			if(!params) return soql;
+
+			for(var key in params)
+			{
+				if(String.isEmpty(key)) continue;
+
+				var regex = new RegExp(':' + key, "g");
+				var value = svc.toSoqlParameter(params[key]);
+				soql = soql.replace(regex, value);
+			}
+
+			return soql;
+		};
+
+		svc.toSoqlParameter = function(value)
+		{
+			if(Array.isArray(value) &amp;&amp; Array.isEmpty(value))
+				return "(null)";
+
+			if(angular.isArray(value)) {
+				var ids = value.map(v => "'" + v + "'").join(", ");
+				return "(" + ids  + ")";
+			}
+
+			if(String.isMissing(value))
+				return "null";
+			return "'" + value + "'";
+		};
+
+		//replace keys : arthurdev1__Supplied_Answer__c => Supplied_Answer
+		//recursive sub objects
+		svc.cleanupSobject = function(so)
+		{
+			//array: cleanup its elements
+			if(angular.isArray(so))
+				return so.map(svc.cleanupSobject);
+
+			if(!angular.isObject(so))
+				return so;
+
+			if(so.records)
+				return svc.cleanupSobject(so.records);
+
+			var result = {};
+			for(var key in so)
+			{
+				if(String.isEmpty(key) || key === "attributes") continue;
+				if(key[0] == "$" || svc.options.removeNull &amp;&amp; String.isMissing(so[key])) continue;
+
+				var field = CommonUtils.convertFieldName(key, svc.options);
+				result[field] = svc.cleanupSobject(so[key]); //recurse into sub objects and arrays
+			};
+
+			return result;
+		};
+
+		svc.filterCustomStandard = function(fieldList, standard, custom)
+		{
+			if(standard === custom || !fieldList.grouped)
+				return fieldList;
+
+			if(standard)
+				return fieldList.grouped.standard;
+
+			if(custom)
+				return fieldList.grouped.custom;
+
+			return fieldList;
+		};
+
+		svc.isCustomOrStandard = function(fieldName)
+		{
+			return CommonUtils.isCustomName(fieldName) ? "custom" : "standard";
+		};
+
+		svc.testQuery = function()
+		{
+			var soqlQuery = "SELECT Id, Question__r.ID, Question__r.Answer_Type__c, Question__c, Supplied_Answer__c, JSON_Data__c, Supplied_Date__c \
+FROM Container_Answer__c \
+WHERE Question__r.Answer_Type__c = :type";
+
+			var params = {type: "upload"};
+
+			return svc.query(soqlQuery, params);
+		};
+
+		svc.describeGlobal = function()
+		{
+			if(Array.isNotEmpty(svc.metadata.sobjects))
+				return svc.resolvePromise({ sobjects: svc.metadata.sobjects });
+
+			return connection.describeGlobal(function(err, response)
+			{
+				if (err) return console.error(err);
+
+				console.log('describeGlobal: SObjects: ', response.sobjects);
+				svc.metadata.sobjects = response.sobjects.filter(so => !String.endsWith(so.name, "__History"));
+				svc.metadata.sobjects.byName = svc.metadata.sobjects.indexBy(so => CommonUtils.removeNamespacePrefix(so.name));
+				svc.metadata.sobjects.byPrefix = svc.metadata.sobjects.indexBy("keyPrefix");
+				svc.metadata.sobjectNames = svc.metadata.sobjects.map(so => CommonUtils.removeNamespacePrefix(so.name)).sort();
+				svc.metadata.sobjectNames.byPrefix = {};
+				svc.metadata.sobjectNames.byName = {};
+				angular.forEach(svc.metadata.sobjects, so => {
+					svc.metadata.sobjectNames.byPrefix[so.keyPrefix] = so.name;
+					svc.metadata.sobjectNames.byName[so.name] = so.keyPrefix;
+				});
+				svc.metadata.sobjectNames.grouped = svc.metadata.sobjectNames.groupBy(svc.isCustomOrStandard);
+			});
+		};
+
+		svc.describe = function(objectType)
+		{
+			var fullObjectType = svc.insertNamespacePrefix(objectType);
+
+			if(svc.metadata[fullObjectType])
+				return svc.resolvePromise(svc.metadata[fullObjectType]);
+
+			return connection.describe(fullObjectType, function(err, meta)
+			{
+				if(err)
+					return console.error(err);
+
+				svc.getFieldNames(meta);
+
+				console.log('describe:', objectType, meta);
+				svc.metadata[fullObjectType] = meta;
+				if(fullObjectType != objectType)
+					svc.metadata[objectType] = meta;
+			});
+		};
+
+		svc.getSObjectType = function(id, withPrefix) {
+			if(String.isBlank(id)) return;
+
+			var prefix = id.substring(0, 3);
+			var sobjectType = CommonUtils.getVar(["sobjects", "byPrefix", prefix, "name"], svc.metadata);
+			if(String.isNotEmpty(sobjectType) &amp;&amp; !withPrefix)
+				return CommonUtils.removeNamespacePrefix(sobjectType);
+			return sobjectType;
+		};
+
+		svc.delete = function(ids, callback)
+		{
+			var recordIds = ids;
+			if(ids &amp;&amp; !angular.isArray(ids))
+				recordIds = [ids];
+
+			if(Array.isEmpty(recordIds)) return;
+
+			var firstId = recordIds[0];
+			if(angular.isObject(firstId))
+			{
+				var idField = firstId.Id ? "Id" : firstId.id ? "id" : "";
+				firstId = firstId[idField];
+				recordIds = recordIds.distinct(idField, true);
+			}
+
+			var prefix = firstId ? firstId.substring(0, 3) : "";
+			var objectType = svc.metadata.sobjectNames.byPrefix[prefix];
+
+			connection.maxRequest = Math.max(recordIds.length, 10);
+			if(!angular.isFunction(callback))
+				callback = svc.afterDelete;
+
+			return connection.sobject(objectType).delete(recordIds, callback);
+		};
+
+		//default callback function for delete
+		svc.afterDelete = function(err, rets)
+		{
+			if(err) return console.error(err.message);
+
+			var deletedIds = rets.filter(r => r.success).distinct("id", true);
+			console.log("SoqlService:", "Deleted Successfully:", deletedIds);
+		};
+
+		svc.getFieldNames = function(meta)
+		{
+			if(Array.isEmpty(meta.fields))
+				return meta.fieldNames = [];
+
+			if(!meta.fieldNames)
+				meta.fieldNames         = meta.fields.map(so => CommonUtils.removeNamespacePrefix(so.name));
+
+			if(!meta.fieldNames.grouped)
+				meta.fieldNames.grouped = meta.fieldNames.groupBy(svc.isCustomOrStandard);
+
+			return svc.filterCustomStandard(meta.fieldNames, options.standardFields, options.customFields);
+		};
+
+		//get map of object to field list for main and inner queries (between SELECT and FROM)
+		svc.getSelectedFields = function(query)
+		{
+			//get only last query (after last ;)
+			var lastQuery = Array.last(String.split(query, ";", true, true));
+			if(String.isBlank(lastQuery))
+				return {};
+
+			//locate inner queries
+			var queryParts = String.split(lastQuery, /[()]/, true, true);
+			var queryWords = queryParts.map(String.splitWords);
+			queryWords = queryWords.groupBy( function(q, i) { return i > 0 &amp;&amp; String.equals(q[0], "SELECT"); } );
+			var innerQueries = queryWords.true;
+			queryWords = queryWords.false;
+
+			var mainQueryWords = [];
+			for(var i = 0 ; i &lt; queryWords.length; i++)
+				mainQueryWords.pushAll(queryWords[i]);
+
+			var fieldMap    = svc.fieldMap    = {};
+			var queryFields = svc.parseQueryFields(mainQueryWords);
+			fieldMap.$rootObject = queryFields.from;
+			fieldMap.$rootFields = fieldMap[queryFields.from] = queryFields.fields;
+
+			for(var i = 0; i &lt; Array.getLength(innerQueries); i++)
+			{
+				var innerFields = svc.parseQueryFields(innerQueries[i]);
+				if(!innerFields || !innerFields.from) continue;
+				queryFields.fields.push(innerFields.from); //add related list to main query columns
+				fieldMap[innerFields.from] = innerFields.fields;
+			}
+
+			return fieldMap;
+		};
+
+		svc.getColumnsFromQuery = function(query, flat, columnLabels)
+		{
+			var queryFieldMap = svc.getSelectedFields(query);
+			var columns = svc.fieldsToColumns(queryFieldMap, flat, null, columnLabels);
+			return columns;
+		};
+
+		svc.fieldsToColumns = function(fieldMap, flat, objectName, columnLabels)
+		{
+			var columns = [];
+			if(!objectName)
+				objectName = fieldMap.$rootObject;
+
+			var fields = fieldMap[objectName];
+			fields.$processed = true;
+
+			for(var i = 0; i &lt; Array.getLength(fields); i++)
+			{
+				var key = fields[i];
+				if(!key || key.startsWith("$"))
+					continue;
+
+				//display only fields that are part of the query
+				var isRelatedList = (key in fieldMap) &amp;&amp; !String.equals(key, objectName) &amp;&amp; !fieldMap[key].$processed;
+
+				var col = { sortable: true };
+				col.field = flat ? svc.flatObjectFieldName(key) : key;
+
+				if(Array.isNotEmpty(columnLabels) &amp;&amp; String.isNotEmpty(columnLabels[i]))
+					col.label = columnLabels[i];
+				else if(svc.options.fieldAsLabel)
+					col.label = col.field;
+
+				//make columns for related list recursively
+				if(isRelatedList) {
+					col.type = "related";
+					col.align = "right";
+					col.showCount = true;
+					col.columns = svc.fieldsToColumns(fieldMap, flat, key);
+				}
+
+				columns.push(col);
+			}
+
+			return columns;
+		};
+
+		// "Request__r.Requestor__r.Name" => "Request__Requestor__Name"
+		svc.flatObjectFieldName = function(field)
+		{
+			if(String.isEmpty(field))
+				return field;
+			return field.replace(/__r\./g, "__").replace(/\./g, "__");
+		};
+
+		svc.parseQueryFields = function(queryWords)
+		{
+			if(Array.isEmpty(queryWords)) return null;
+			if(angular.isString(queryWords))
+				queryWords = String.splitWords(queryWords);
+			var fromIndex = queryWords.findIndex(w => String.equals(w, "FROM"));
+			var objName = queryWords[fromIndex + 1];
+			queryWords = queryWords.slice(1, fromIndex);
+			return { from: objName, fields: queryWords };
+		};
+
+		svc.getColumnsFromData = function(data, showId, query)
+		{
+			if(Array.isEmpty(data))
+				return null;
+			if(angular.isArray(data))
+				data = data[0];
+
+			//get distinct field names from 1st record or all records (if null not included) ?
+			var columns = [];
+			var fields = Object.keys(data);
+			var queryFields = null;
+			if(String.isNotEmpty(query))
+			{
+				queryFields = svc.getSelectedFields(query);
+				queryFields = queryFields.$rootFields;
+			}
+
+			for(var i = 0; i &lt; Array.getLength(fields); i++)
+			{
+				var key = fields[i];
+				if(!key || !showId &amp;&amp; key == "Id" || key.startsWith("$"))
+					continue;
+
+				//display only fields that are part of the query
+				var isRelatedList = Array.isArray(data[key]);
+				if(!isRelatedList &amp;&amp; String.isNotEmpty(query) &amp;&amp; !Array.in(key, queryFields))
+					continue;
+
+				var col = {field: key, sortable: true};
+				if(svc.options.fieldAsLabel)
+					col.label = col.field;
+
+				if(isRelatedList) {
+					col.type = "related";
+					col.align = "right";
+					col.showCount = true;
+					col.columns = svc.getColumnsFromData(data[key]);
+				}
+
+				columns.push(col);
+			}
+
+			return columns;
+		};
+
+		//return promise instantly with data
+		svc.resolvePromise = function(data)
+		{
+			const deferred = $q.defer();
+			deferred.resolve(data);
+			return deferred.promise;
+		};
+
+		svc.parseJsonColumn = function(records, field)
+		{
+			for(var i = 0; i &lt; Array.getCount(records); i++)
+				if(CommonUtils.isJsonString(records[i][field]))
+					records[i][field] = angular.fromJson(records[i][field]);
+
+			return records;
+		};
+
+		svc.parseQuery = function(query)
+		{
+			let result = {};
+			let soql = "";
+			soql = query.substringAfter ("GROUP BY ", true, false, false, true);
+			if(String.isNotBlank(soql)) result.groupBy = soql.trim();
+	
+			soql = query.substringAfter ("ORDER BY ", true, false, false, true)
+						.substringBefore("GROUP BY ", true, false, false, true);
+			if(String.isNotBlank(soql)) result.orderBy = soql.trim();
+	
+			soql = query.substringAfter ("WHERE ",    true, false, false, true)
+						.substringBefore("ORDER BY ", true, false, false, true)
+						.substringBefore("GROUP BY ", true, false, false, true);
+			if(String.isNotBlank(soql)) result.where = soql.trim();
+	
+			soql = query.substringAfter ("FROM ",     true, false, false, true)
+						.substringBefore("WHERE ",    true, false, false, true)
+						.substringBefore("ORDER BY ", true, false, false, true)
+						.substringBefore("GROUP BY ", true, false, false, true);
+			if(String.isNotBlank(soql)) result.from = soql.trim();
+	
+			soql = query.substringAfter ("SELECT ",   false, false, false, true)
+						.substringBefore("FROM ",     true,  false, false, true);
+			if(String.isNotBlank(soql)) result.select = soql.trim();
+	
+			return result;
+		};
+	
+		svc.getCountQuery = function(query)
+		{
+			var parsed = svc.parseQuery(query);
+			parsed.select = SOQL_COUNT;
+			delete parsed.orderBy;
+			delete parsed.groupBy;
+			parsed.soql = svc.formatQuery(parsed);
+			return parsed;
+		};
+	
+		svc.formatQuery = function(parsed)
+		{
+			if(angular.isString(parsed))
+				parsed = svc.parseQuery(parsed);
+			var chunkQuery = "SELECT " + parsed.select;
+			chunkQuery += "\nFROM " + parsed.from;
+			if(parsed.where)   chunkQuery += "\nWHERE "    + parsed.where;
+			if(parsed.orderBy) chunkQuery += "\nORDER BY " + parsed.orderBy;
+			if(parsed.groupBy) chunkQuery += "\nGROUP BY " + parsed.groupBy;
+	
+			return chunkQuery;
+		};
+	
+		svc.getChunkQuery = function(query)
+		{
+			var parsed = svc.parseQuery(query);
+			if(!parsed.orderBy) parsed.orderBy = "Id";
+	
+			let sep = parsed.where ?  " AND " : "";
+			if(!parsed.where)
+				parsed.where = "";
+			if(!parsed.where.includes(":lastid"))
+				parsed.where += sep + parsed.orderBy + " > :lastid";
+	
+			parsed.soql = svc.formatQuery(parsed);
+			return parsed;
+		};
+
+		svc.init();
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

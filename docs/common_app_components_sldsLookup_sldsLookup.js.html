@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/sldsLookup/sldsLookup.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/sldsLookup/sldsLookup.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/sldsLookup
+
+@description Used for displaying Lookup(search)/Select/Multi-select input fields
+&lt;br/>
+&lt;br/>
+&lt;center>
+	&lt;img style="height: 90px" src="https://user-images.githubusercontent.com/21251436/37166369-b9d302ec-22b3-11e8-8e8b-5023f8b55f65.png"/>
+&lt;/center>
+
+@see {@link https://www.lightningdesignsystem.com/components/lookups/#content|Lookups - Lightning Design System}
+
+@param model       {String|Object|String[]|Object[]} = selected item value(s)
+
+@param multiple    {optional|Boolean} =? if true: multiple select / default: single select
+@param readOnly    {optional|Boolean} =? true: read-only / default: editable
+
+@param variable    {optional|String} @ global variable name (for console debugging only)
+@param inputId     {optional|String} @ id of search input field
+@param placeholder {optional|String} &lt; placeholder for search input field
+
+@param remoteActionArgs      {optional|Array} &lt; remote action arguments, passed before search term
+@param remoteActionArgsAfter {optional|Array} &lt; remote action arguments, passed after search term
+@param searchAction {optional|String} @ name of the method to call to search for auto-complete results
+@param initAction {optional|String} @ name of the method to call to reload selected item
+@param loadColumnAction {optional|String} @ name of the remote action method to reload all column values (in a table)
+
+@param onChange  {optional|function} =?  function called on adding item (if onAdd not passed)  and on removing item (if onRemove not passed)
+@param onAdd     {optional|function} =? function called when an item is selected (if onAdd is not passed, onChange will be executed instead)
+@param onRemove  {optional|function} =? function called when an item is deselected (if onRemove is not passed, onChange will be executed instead)
+
+@param options =?   {optional|String[]|Object[]} list of options to search / select from  (ex: answer options from the question)
+@param displayField {optional|String}  @ name of the item object field to display (default: name)
+@param modelField   {optional|String}  @ name of the item object field to store as model value (empty: store the whole item object)
+@param modelJoin    {optional|String}  @ separator character to store multiple answers in model as String (ex: ';') / empty: store model as array
+@param keyField     {optional|String}  @ used to dedup items in multiple selection
+@param subItemField {optional|Boolean} @ display sub-item lists (ex: for group items: subItemField="groupMembers" for group members. displays names of sub-items)
+
+@param exclude      {optional|Object[]} =? array of objects to prevent selection / remove from search results (diff by modelField or keyField)
+@param excludeSelection {optional|Boolean} =? add the selected value to exclude list (to make unique selection across multiple lookups)
+@param minLength    {optional|Number} =? minimum search term length before searching (default: 2 for search / 0 for multi-picklist)
+@param icon         {optional|String|function} @ item icon to use. can be a String if it is the same for all items ("account") &lt;br/> or a function(item) if it depends on item properties.
+@param iconFile     {optional|String|function} @ icon file to use (default: standard)
+@param itemIcon     {optional|function} =? function(item) function(item) returning icon name and file depending on item properties.
+@param fieldType    {optional|String}  @? actual type of field that used to save data 'search'/'multi-picklist'
+@param required     {optional|String|function} &lt; attribute to control required state out of formly-form context
+@param bulkSelection {optional|Boolean} =? for multiple selection: enable select all options / none
+@param scrollableContainerToWatch {optional|String} @ (jquery selector) if container is scrollable, must know an attribute to detect when it scrolls
+@param maxLength    {optional|Number} =?  max length for picklist answers stored as string,
+@param watchModel   {optional|Boolean} =? enable refresh on vm.model change   (if value can be passed from outside after initalizing)
+@param watchOptions {optional|Boolean} =? enable refresh on vm.options change (if options can be passed from outside after initalizing)
+
+@example
+&lt;slds-lookup model="vm.selectedPartnerResult" remote-action="vm.tradingPartnerSearch">&lt;/slds-lookup>
+*/
+
+module.exports = function (ngModule)
+{
+	'use strict';
+
+	ngModule.component('sldsLookup', {
+		bindings: {
+			model: '=',             //selected search result
+			variable: '@',          //global variable name (optional, for debugging)
+			inputId: '@',           //optional id for input field
+			placeholder: '&lt;',       //placeholder for input
+			multiple: '=?',         //true: multiple select / false: single select
+			readOnly: '=?',         //true: read-only / false: editable
+			remoteActionArgs: '&lt;', //remote action argument array (passed before search term)
+			remoteActionArgsAfter: '&lt;', //remote action argument array (passed after search term)
+			searchAction: '@',      //name of the method to call to search for auto-complete results
+			initAction: '@',        //name of the method to call to reload selected item
+			loadColumnAction: '@',  //name of the remote action method to reload all column values (in a table)
+			onChange: '=?',          //function called on adding item (if onAdd not passed)  and on removing item (if onRemove not passed)
+			onAdd: '=?',            //function called when an item is selected (if onAdd is not passed, onChange will be executed instead)
+			onRemove: '=?',         //function called when an item is deselected (if onRemove is not passed, onChange will be executed instead)
+			options: '=?',          //answer options from the question
+			displayField: '@',      //name of the item object field to display
+			modelJoin: '@',         //separator for multiple answers as string / empty: model as array
+			modelField: '@',        //name of the item object field to store as model value (empty: store the whole item object)
+			keyField: '@',          //used to debup items in multiple selection
+			//display sub-item lists (for group members. add value and display fields)
+			subItemField: '@',
+			// subItemDisplayField: '@',
+			// subItemModelField: '@',
+			exclude: '=?',           //array of objects to prevent selection / remove from search results (diff by modelField or keyField)
+			excludeSelection: '=?',  //add the selected value to exclude list (to make unique across multiple lookups)
+			minLength: '=?',         //minimum search term length before searching
+			icon: '@',               //item icon to use (default: account)
+			iconFile: '@',           //icon file to use (default: standard)
+			itemIcon: '=?',          //function(item) returning icon
+			fieldType: '@?',         //actual type of field that used to save data 'search'/'multi-picklist'
+			required: '&lt;',            //attribute to control required state out of formly-form context
+			bulkSelection: '=?',          //for multiple selection: enable select all options / none
+			scrollableContainerToWatch: '@', //if container is scrolalble, must know an attribute to detect when it scrolls
+			maxLength: '=?',          //max length for picklist answers stored as string,
+			watchModel: '=?',         //enable refresh on vm.model change   (if value can be passed from outside after initalizing)
+			watchOptions: '=?'        //enable refresh on vm.options change (if options can be passed from outside after initalizing)
+		},
+		template: require('./sldsLookup.html'),
+		controllerAs: 'vm',
+		controller: SldsLookupController
+	});
+
+	function link($scope, $element, $attrs, vm)
+	{
+		const $document = angular.element(document);
+
+		vm.handleExternalClick = handleExternalClick;
+		vm.showSearchResults = showSearchResults;
+		vm.hideSearchResults = hideSearchResults;
+
+		//get parent table container only
+		if(vm.scrollableContainerToWatch)
+			vm.scrollableContainer = $element.parents(vm.scrollableContainerToWatch);
+
+		function showSearchResults() {
+			if(vm.searchResultsVisible) return;
+
+			vm.searchResultsVisible = true;
+			$document.on('click', handleExternalClick);
+			$document.on('keydown', handleKeyboardInput);
+			if(vm.scrollableContainer){
+				$document.on('scroll', handleWindowScroll);
+				vm.scrollableContainer.on('scroll', handleWindowScroll);
+			}
+		}
+
+		function hideSearchResults() {
+			vm.searchResultsVisible = false;
+			$document.off('click', handleExternalClick);
+			$document.off('keydown', handleKeyboardInput);
+			if(vm.scrollableContainer){
+				$document.off('scroll', handleWindowScroll);
+				vm.scrollableContainer.off('scroll', handleWindowScroll);
+			}
+		}
+
+		function handleKeyboardInput(e) {
+			const keyCode = e.keyCode || e.which;
+
+			// ESC key (close)
+			if(keyCode === 27) {
+				document.activeElement.blur();
+				hideSearchResults();
+				$scope.$apply();
+			}
+		}
+
+		function handleExternalClick(e) {
+
+			// if clicked on component tree - does anything
+			const targetsArr = $element.find(e.target.tagName);
+			for(let i = 0; i &lt; targetsArr.length; i++) {
+				if(e.target == targetsArr[i]) {
+					return;
+				}
+			}
+
+			hideSearchResults();
+
+			if(!vm.multiple) {
+				vm.searchResults = [];
+			}
+
+			$scope.$apply();
+		}
+		function handleWindowScroll(e){
+			if(vm.menuContainer){
+				//remove the focus to reopen it on click with the results
+				$(vm.menuContainer[0].querySelector('input')).blur();
+			}
+			hideSearchResults();
+			$scope.$apply();
+		}
+	}
+
+	SldsLookupController.$inject = ['$scope', '$element', '$attrs', 'CommonUtils', 'SearchService', 'FormValidationService', 'ToastService'];
+	function SldsLookupController(  $scope,    $element,   $attrs,   CommonUtils,   SearchService,   FormValidationService,   ToastService)
+	{
+		var vm = this;
+		CommonUtils.setVar(vm.variable, vm);
+		link($scope, $element, $attrs, vm);
+
+		vm.$onInit = function ()
+		{
+			if(!angular.isArray(vm.remoteActionArgs))
+				vm.remoteActionArgs = SearchService.toArray(vm.remoteActionArgs);
+
+			if(!angular.isArray(vm.remoteActionArgsAfter))
+				vm.remoteActionArgsAfter = SearchService.toArray(vm.remoteActionArgsAfter);
+
+			if(!angular.isDefined(vm.minLength))
+				vm.minLength = 2;
+
+			//register every lookup instance into SearchService to share requests
+			SearchService.registerLookup(vm);
+
+			if (!vm.iconFile) vm.iconFile = "standard";
+			vm.inputIconName = getInputIconName(vm.fieldType);
+			vm.initialPlaceholder = vm.placeholder;
+			vm.isMultiPicklist = vm.fieldType === "multi-picklist";
+			vm.imageDir = window.sf_design_system.imageDir;
+			vm.namespace = CommonUtils.getNamespace();
+			vm.modelOptions = {debounce: 400};
+			vm.labels = window.labels;
+			if(!vm.labels)
+				vm.labels = { common: { optionSelected: "option selected", optionSelected_plural: "options selected"} };
+
+			if(!vm.keyField &amp;&amp; vm.modelField)
+				vm.keyField = vm.modelField;
+
+			//load saved item by value
+			vm.selectedItemsMap = {};
+			if(!vm.watchOptions &amp;&amp; !vm.watchModel)
+				vm.initValue();
+			if(vm.watchOptions)
+				$scope.$watch("vm.options", vm.initValue);
+			if(vm.watchModel)
+				$scope.$watch("vm.model", vm.initValue);
+		};
+
+		//load saved item by value
+		vm.initValue = function ()
+		{
+			//console.log("sldsLookup", vm.variable || "", "initValue", vm.model);
+			vm.selectedItems = [];
+			vm.selectedItemsMap = {};
+
+			if(Array.isNotEmpty(vm.options)) {
+				vm.optionsByValue = null;
+				vm.selectedItems = vm.selectOptions(vm.model);
+				vm.selectItem(vm.selectedItems);
+			}
+			else {
+				var values = vm.model;
+				if(angular.isString(vm.model))
+					values = SearchService.toArray(values);
+				vm.selectItem(values);
+			}
+
+			vm.updatePlaceholder();
+			//load saved item by value
+			if(vm.model)
+				SearchService.loadItem(vm.initAction, vm.remoteActionArgs, vm.model, vm.remoteActionArgsAfter, vm.selectItem, vm.loadColumnAction, vm);
+		};
+
+		//select options by value when loading model
+		vm.selectOptions = function (values)
+		{
+			if (!values || Array.isEmpty(vm.options))
+				return [];
+
+			if(angular.isString(values))
+				values = values.split(";");
+
+			if(!vm.optionsByValue)
+				vm.optionsByValue = vm.options.indexBy(vm.keyField);
+
+			var selectedOptions = [];
+			angular.forEach(values, function (val) {
+				if(angular.isObject(val) &amp;&amp; vm.optionsByValue[val[vm.keyField]])
+					selectedOptions.push(vm.optionsByValue[val[vm.keyField]]);
+				else if (vm.optionsByValue[val])
+					selectedOptions.push(vm.optionsByValue[val]);
+			});
+			return selectedOptions;
+		};
+
+/*
+make the following changes:
+1. add variable / conditional icon (either in item.icon or function(item) )
+2. display sub-item lists (for group members. add value and display fields)
+3. add exclude parameter  exclude = "data.selectedPartners" to remove from search results
+
+Also fix this:
+4. read only print mode / PDF: display selected values with comma separator in text (not fancy css)
+5. if you change multi picklist value, you can't save it unless u change something else
+*/
+
+//TODO: conditional icons based on function(item)
+//1. add variable / conditional icon (either in item.icon or function(item) )
+
+		vm.getIcon = function (item)
+		{
+			if(item &amp;&amp; item.$icon) return item.$icon;
+
+			var itemIcon = {};
+			if(angular.isFunction(vm.itemIcon))
+				itemIcon = vm.itemIcon(item);
+
+			if(!itemIcon)
+				itemIcon = {};
+			else if(angular.isString((itemIcon)))
+				itemIcon = {icon: itemIcon};
+
+			if(!itemIcon.icon)
+				itemIcon.icon = item &amp;&amp; item.icon || vm.icon;
+
+			if(!itemIcon.icon)
+				return itemIcon;
+
+			if(!itemIcon.iconFile)
+				itemIcon.iconFile = item &amp;&amp; item.iconFile || vm.iconFile;
+
+			if(!itemIcon.classes)
+				itemIcon.classes = vm.getIconClass(itemIcon);
+
+			if(item &amp;&amp; angular.isObject(item) &amp;&amp; itemIcon.icon) item.$icon = itemIcon;
+			return itemIcon;
+		};
+
+		vm.getIconClass = function (itemIcon)
+		{
+			if(!itemIcon)
+				return "";
+			if(!itemIcon.icon)
+				itemIcon.icon = vm.icon;
+			if(!itemIcon.icon)
+				return "";
+
+			var iconName = itemIcon.icon.substringAfter(itemIcon.iconFile, false, true);
+			return "slds-icon-" + itemIcon.iconFile + "-" + iconName;
+		};
+
+		vm.hasSubItems = function(item)
+		{
+			return item &amp;&amp; String.isNotEmpty(vm.subItemField) &amp;&amp; Array.isNotEmpty(item[vm.subItemField]);
+		};
+
+		//TODO: if searchResults already in SearchService.cache, do not call remoteAction searchAction //use vm.options
+		vm.search = function ()
+		{
+			vm.result = '';
+			var searchTerm = '';
+			if (vm.searchTerm)
+				searchTerm = vm.searchTerm.replace(/\s+/g, ' ').trim();
+
+			vm.searchResults = vm.filterOptions(searchTerm);
+			if (vm.searchAction &amp;&amp; searchTerm.length >= vm.minLength)
+				SearchService.search(vm.searchAction, vm.remoteActionArgs, searchTerm, vm.remoteActionArgsAfter, vm.addSearchResults, vm);
+
+			vm.showSearchResults();
+		};
+
+		vm.addSearchResults = function (results)
+		{
+			if(Array.isEmpty(results)) return;
+
+			//remove excluded results
+			Array.removeMultiple(results, vm.exclude, vm.keyField);
+			return vm.searchResults = vm.searchResults.concat(results);
+		};
+
+		vm.filterOptions = function (searchTerm)
+		{
+			if (String.getLength(searchTerm) &lt; vm.minLength || Array.isEmpty(vm.options))
+				return [];
+
+			if (!searchTerm) searchTerm = "";
+			return SearchService.filterOptions(vm.options, searchTerm, vm.displayField);
+		};
+
+		/**
+		 * @description handle single and multiple selection
+		 *              use map with keys = id or name or value
+		 * @param {Object/Array} items - items that was selected
+		 * @param {Boolean} manually - flag that indicates manually changes from user
+		 */
+		vm.selectItem = function (items, manually)
+		{
+			if(Array.isEmpty(items)) return;
+			if(!angular.isArray(items)) items = [items];
+			vm.selectedItem = items[0];
+			//console.log(vm.variable, 'selectItem: items =', items);
+
+			// allow user pick only one answer for focusing
+			if(!vm.isMultiPicklist)
+				vm.hideSearchResults();
+
+			if(vm.maxLength)
+			{
+				var arrSelectedValues = [];
+				for(var key in vm.selectedItemsMap) {
+					var element = vm.selectedItemsMap[key];
+					arrSelectedValues.push(element[vm.modelField]);
+				}
+
+				if(Array.isNotEmpty(arrSelectedValues))
+				{
+					var currentSelectionLength = arrSelectedValues.join(vm.modelJoin).length;
+					var itemToAdd = angular.isString(items[0]) ? items[0] : items[0][vm.modelField];
+
+					if((currentSelectionLength + itemToAdd.length) > vm.maxLength)
+						return ToastService.toast("Maximum number of elements selected, last selection could not be added", "error", 3000);
+				}
+			}
+
+			angular.forEach(items, function(item)
+			{
+				var key = vm.getItemKey(item);
+				if(key)
+					vm.selectedItemsMap[key] = item;
+				if(vm.excludeSelection &amp;&amp; vm.exclude &amp;&amp; !vm.exclude.includes(key))
+					vm.exclude.push(key);
+			});
+
+			vm.refresh(manually);
+
+			if(angular.isFunction(vm.onAdd))
+				vm.onAdd(vm.model);
+			else if(angular.isFunction(vm.onChange))
+				vm.onChange(vm.model);
+
+			if(manually) //set form dirty, only in case of a manual selection change
+				FormValidationService.setFormDirty();
+		};
+
+		vm.onAnswerOptionClick = function (item) {
+			if(vm.isMultiPicklist &amp;&amp; vm.isSelectedItem(item))
+				vm.deselectItem(item);
+			else
+				vm.selectItem(item, true);
+		};
+
+		//deselect 1 item in multiple selection
+		vm.deselectItem = function (item)
+		{
+			var key = vm.getItemKey(item);
+			//console.log(vm.variable, 'deselectItem: key =', key, item);
+			if (!key) return;
+
+			if(vm.exclude &amp;&amp; vm.excludeSelection)
+				Array.remove(vm.exclude, key);
+
+			delete vm.selectedItemsMap[key];
+			vm.refresh(true);
+
+			if(angular.isFunction(vm.onRemove))
+				vm.onRemove(vm.model);
+			else if(angular.isFunction(vm.onChange))
+				vm.onChange(vm.model);
+
+			if(Object.isEmpty(vm.selectedItemsMap))
+				vm.clearSelection(true);
+			else
+				FormValidationService.setFormDirty();
+		};
+
+		/**
+		 * @param {Boolean} manually - flag that indicates manual selection change from user
+		 */
+		vm.clearSelection = function (manually)
+		{
+			var key = vm.getItemKey(vm.selectedItem);
+			//console.log(vm.variable, 'clearSelection: selectedItem =', key, vm.selectedItem, vm.selectedItemsMap, "changed =", changed);
+
+			if(vm.exclude &amp;&amp; vm.excludeSelection)
+				Array.remove(vm.exclude, key);
+
+			//console.log('clearSelection: exclude =', vm.exclude);
+			vm.selectedItem = vm.model = null;
+			vm.selectedItems = [];
+			vm.selectedItemsMap = {};
+			vm.searchTerm = '';
+
+			//call onChange only if selection was not empty before
+			if(angular.isFunction(vm.onChange))
+				vm.onChange(vm.model);
+
+			vm.updatePlaceholder();
+			if(manually)
+				FormValidationService.setFormDirty();
+		};
+
+		vm.selectAll = function ()
+		{
+			if(Array.isEmpty(vm.options)) return;
+
+			vm.selectedItemsMap = vm.options.toMap();
+			//vm.selectedItems = Object.values(vm.selectedItemsMap);
+			//console.log(vm.variable, 'selectAll =', vm.selectedItemsMap);
+
+			vm.refresh(true);
+			if(angular.isFunction(vm.onChange))
+				vm.onChange(vm.model);
+		};
+
+		//refresh selection display
+		//if selecting from model watch: do not update mode back, to avoid infinite $scope.$apply
+		vm.refresh = function (updateModel)
+		{
+			//console.log("sldsLookup", vm.variable || "", "refresh", vm.model, "updateModel", updateModel);
+			if (!vm.multiple) {
+				if(updateModel)
+					vm.model = vm.getItemField(vm.selectedItem, vm.modelField);
+				return vm.model;
+			}
+
+			//TODO do this the other way around . selectedItemsMap made from selectedItems.
+			vm.selectedItems = Object.values(vm.selectedItemsMap);
+			vm.updatePlaceholder();
+
+			if (!vm.modelField) {
+				if(updateModel)
+					vm.model = vm.selectedItems;
+				return vm.model;
+			}
+
+			if(updateModel) {
+				var values = [];
+				for (let key in vm.selectedItemsMap)
+					values.push(vm.getItemField(vm.selectedItemsMap[key], vm.modelField));
+
+				if(vm.modelJoin)
+					values = values.join(vm.modelJoin);
+
+				vm.model = values;
+			}
+
+			return vm.model;
+		};
+
+		vm.getItemKey = function (item) {
+			return vm.getItemField(item, vm.keyField, "Name");
+		};
+
+		vm.displayItem = function (item, withValue) {
+			var name = vm.getItemField(item, vm.displayField, "Name");
+			var value = withValue ? vm.getItemField(item, vm.displayField, "value") : null;
+			if(String.isEmpty(value) || !angular.isString(value) || String.equals(value, name))
+				return name;
+
+			return name + " (" + value + ")";
+		};
+
+		//handle namespaced field name
+		vm.getItemField = function (item, field, defaultField, caseSensitive) {
+			//simple type: return item
+			if (!item || !angular.isObject(item)) return item;
+
+			var value;
+			if (field) {
+				if (value = vm.getField(item, field, caseSensitive)) return value;
+				if (value = vm.getField(item, vm.namespacedField(field), caseSensitive)) return value;
+			}
+
+			if (defaultField) {
+				if (value = vm.getField(item, defaultField, caseSensitive)) return value;
+				if (value = vm.getField(item, vm.namespacedField(defaultField), caseSensitive)) return value;
+			}
+
+			return item;
+		};
+
+		vm.namespacedField = function (field) {
+			if (!field || !vm.namespace) return field;
+
+			if (!vm.namespace.endsWith("__")) vm.namespace += "__";
+			if (!field.endsWith("__c")) field += "__c";
+
+			return vm.namespace + field;
+		};
+
+		vm.getField = function (item, field, caseSensitive) {
+			if (field &amp;&amp; angular.isDefined(item[field]))
+				return item[field];
+
+			if (caseSensitive) return;
+
+			field = field.toLowerCase();
+			if (field &amp;&amp; angular.isDefined(item[field]))
+				return item[field];
+		};
+
+		vm.updatePlaceholder = function () {
+			const nbSelectedItems = Object.values(vm.selectedItemsMap).length;
+			vm.placeholder = nbSelectedItems > 0 ? String.plural(nbSelectedItems, vm.labels.common.optionSelected, vm.labels.common.optionSelected_plural) : vm.initialPlaceholder;
+		};
+
+		vm.isSelectedItem = function(item) {
+			const key = vm.getItemKey(item);
+			return !!vm.selectedItemsMap[key];
+		};
+
+		vm.isNotEditableMultiSelect = function isNotEditableMultiSelect() {
+			return !(vm.isMultiPicklist &amp;&amp; !vm.readOnly);
+		};
+
+		vm.isAnswerPillsContainerShown = function isAnswerPillsContainerShown() {
+			return vm.selectedItems.length &amp;&amp; (!vm.isMultiPicklist || vm.isNotEditableMultiSelect());
+		};
+
+		function getInputIconName(fieldType) {
+			const defaultIconName = 'search';
+			const fieldTypeIconNameMapping = { 'multi-picklist': 'down' };
+			return fieldTypeIconNameMapping[fieldType] || defaultIconName;
+		}
+	} //end SldsLookupController
+
+	ngModule.directive('fixAlignOnRender', function ()
+	{
+		return function (scope, element, attrs)
+		{
+			if(scope.vm.scrollableContainerToWatch &amp;&amp; scope.vm.searchResultsVisible &amp;&amp; scope.vm.searchResults.length)
+			{
+				scope.vm.dropdownMenu = element.parent();
+				scope.vm.menuContainer = scope.vm.dropdownMenu.parents('.slds-lookup');
+				//for multipicklists need to use the height of the field
+				scope.vm.triggerField = angular.element(scope.vm.menuContainer[0].querySelector('.slds-input-has-icon'));
+				console.log(scope.vm.triggerField);
+				scope.vm.componentContainer = scope.vm.menuContainer.parent().parent();
+
+				$('body').append(scope.vm.dropdownMenu.detach());
+				var eOffset = scope.vm.menuContainer.offset();
+				scope.vm.dropdownMenu.css({
+					display: 'block',
+					top:   eOffset.top + scope.vm.triggerField.outerHeight(),
+					right: eOffset.right,
+					left:  eOffset.left,
+					width: scope.vm.componentContainer.outerWidth()
+				});
+			}
+		};
+	});
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

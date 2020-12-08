@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/uprelationshipPermissions/uprelationshipPermissions.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/uprelationshipPermissions/uprelationshipPermissions.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/uprelationshipPermissions
+
+@description This component is used to display and manage UP Relationship Permissions on UPRelationshipPermissions.page .
+
+@param main    {Object}  = main page controller
+@param btnBack {Boolean} = true: display Previous (back) button / default: hide
+@param btnSave {Boolean} = true: display Save button / default: hide
+
+@example
+&lt;up-relationship-permissions ng-show="vm.modalProductPermissionsVisibility" main="vm" btn-back="false" btn-save="true">&lt;/up-relationship-permissions>
+*/
+
+module.exports = function (ngModule)
+{
+	ngModule.component('upRelationshipPermissions', {
+		bindings: { main: '=', btnBack: '=?', btnSave: '=?' },
+		template: require('./uprelationshipPermissions.html'),
+		controllerAs: 'vm',
+		controller: UpRelationshipPermissionsNgController
+	});
+
+	UpRelationshipPermissionsNgController.$inject = ['RemoteActionService'];
+	function UpRelationshipPermissionsNgController  ( RemoteActionService )
+	{
+		var vm = this;
+		window.upRelationshipPermissions = vm;
+		vm.main.upRelationshipPermissions = vm;
+
+		vm.$onInit = function()
+		{
+			vm.imageDir             = window.sf_design_system.imageDir;
+
+			vm.listSize             = 100;
+			vm.maxListLimit         = 15000;
+			vm.shareWithVisible     = false;
+			vm.available            = [];
+
+			if(vm.main &amp;&amp; vm.main.theUPRelationshipId)
+				vm.uprelationshipId = vm.main.theUPRelationshipId;
+			else
+				vm.uprelationshipId = null;
+
+			vm.option               = 0; // by default (Public)
+			if(vm.main &amp;&amp; vm.main.productRelationsipPermissionsOption &amp;&amp; vm.main.permissionOptions &amp;&amp; vm.main.permissionOptions.length > 0) {
+				for(var i = 0; i &lt; vm.main.permissionOptions.length; i++) {
+					if (vm.main.permissionOptions[i] == vm.main.productRelationsipPermissionsOption) {
+						vm.option = i;
+						break;
+					}
+				}
+			}
+
+			vm.changePermissionOption();
+		};
+
+		vm.close = function()
+		{
+			RemoteActionService.callRemoteAction( "cancelButtonActionForTags", [ vm.main.addedList, vm.main.editedList, vm.main.deletedList ], vm.getAddTagResult);
+			vm.main.hideProductPermissionsModal();
+		};
+
+		vm.back = function()
+		{
+			vm.main.hideProductPermissionsModal();
+			vm.main.showProductModal();
+		};
+
+		vm.save = function()
+		{
+			if(!vm.main.selectedResult) return;
+
+			if(vm.main.createNewProduct)
+				vm.main.saveNewProductRelationship('newproduct');
+			else if(vm.main.selectedResult.isTradingPartnerConnected)
+				vm.main.saveNewProductRelationship('newproductrelationship');
+			else if(!vm.main.selectedResult.isProductConnected)
+				vm.main.saveNewProductRelationship('newpartnerrelationship_newproductrelationship');
+		};
+
+		vm.changePermissionOption = function(){
+			vm.main.productRelationsipPermissionsSelectedList = [];
+			if(vm.option)   vm.main.productRelationsipPermissionsOption = vm.main.permissionOptions[ vm.option ];
+			if(vm.option == 0 || vm.option == 1) {  // for Public or for Private
+				vm.shareWithVisible = false;
+			}
+			else if(vm.option == 2) // Viewable to certain Trading Partners
+			{
+				//if(vm.available.length == 0)
+				vm.available = [];
+				vm.loadAvailableList(vm.uprelationshipId, '', vm.listSize, 0);
+				vm.shareWithVisible = true;
+			}
+		};
+
+		vm.loadAvailableList = function(uprelationshipId, searchWord, limit, offset)
+		{
+			console.log('##### vm.loadAvailableList in the uprelationshipPermissions.js');
+			if(vm.maxListLimit &amp;&amp; vm.available.length >= vm.maxListLimit) return;
+
+			if(vm.option == 2) {
+				vm.loading = true;
+				RemoteActionService.callRemoteAction("getUPRelationshipPermissionsAvalable1", [uprelationshipId, searchWord, limit, offset], vm.getAvailableListResult);
+			}
+		};
+
+		vm.getAvailableListResult = function(event){
+			if(event) {
+				event.forEach(function(el) {
+					if(vm.maxListLimit &amp;&amp; vm.available.length >= vm.maxListLimit) return;
+					vm.available.push( el );
+				});
+				vm.loading = false;
+			}
+		};
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/services/ProductTestService.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/services/ProductTestService.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/services/ProductTestService
+
+@description
+This Service contains functions and data shared by all Product Test form components:
+executive-summary, summary-of-failures, product-test-attributes, product-test-results,
+and formview/TabService.
+*/
+
+module.exports = function(ngModule)
+{
+	'use strict';
+	ngModule.service('ProductTestService', ProductTestService);
+	ProductTestService.$inject = ['CommonUtils', 'RemoteActionService', 'FormValidationService', 'ToastService'];
+	function ProductTestService  ( CommonUtils,   RemoteActionService,   FormValidationService,   ToastService )
+	{
+		var svc = this;
+		svc.dataLoaded = false;
+		svc.nbLoads = 0;
+		svc.productTestIdsToDelete = [];
+
+		svc.data = {}; //contains data that is shared by this service and all product test UI components
+		svc.data.productTests = null;
+		svc.data.productTestExecutiveSummary = {};
+		svc.data.summaryOfFailures = {};
+
+		svc.data.attributeFilters = {};
+
+		svc.data.selectionMap = {};
+		svc.data.selection = [];
+		svc.settings = window.formViewSettings || {};
+
+		svc.data.workflowActorType = svc.settings.workflowActorType;
+		svc.data.partiallyReadOnly = svc.settings.workflowActorType !== "Verifier";
+
+		svc.data.forceReadOnly                = svc.settings.forceReadOnly;
+		svc.data.isAllowedToDeleteTest 	      = svc.settings.isAllowedToDeleteTest;
+		svc.data.isRequestClosed              = svc.settings.isRequestClosed;
+		svc.data.program                      = svc.settings.defaultTestingProgram;
+		svc.containerGlobalId                 = svc.settings.containerGlobalId;
+		svc.productRelationship               = svc.settings.productRelationship;
+		svc.data.commentsByProductTest        = {};
+
+		svc.data.showTestCategory = CommonUtils.getVar("container.containerTemplate.showTestCategory", svc.settings, true);
+		svc.data.showTestClass    = CommonUtils.getVar("container.containerTemplate.showTestClass",    svc.settings, true);
+		svc.data.showTestMethod   = CommonUtils.getVar("container.containerTemplate.showTestMethod",   svc.settings, false);
+		svc.data.showTestComments = CommonUtils.getVar("container.containerTemplate.showTestComments", svc.settings, false);
+		svc.data.restrictTestDeletion = CommonUtils.getVar("container.containerTemplate.restrictTestDeletion", svc.settings);
+		svc.data.restrictTestDeletion = String.includes(svc.data.restrictTestDeletion, svc.data.workflowActorType);
+
+		const limitTypes = svc.limitTypes = Array.map(svc.settings.limitTypes, str => str.toLowerCase());
+		Array.remove(limitTypes, "lab"); //dont use lab at the moment
+
+		// var exceedStatuses = svc.settings.exceedStatuses;
+		//exceedStatuses hardcoded for DE8324, values of the picklist in SFDC changed.
+		const TEST_STATUSES             = ["Information Only", "Group Sum", "Warning", "Pass", "Non-Detect Pass", "Kid Fail (Adult Pass)", "Fail", "Additional Testing Needed"];
+		const NEGATIVE_STATUSES         = ['Fail', 'Kid Fail (Adult Pass)'];
+		const POSITIVE_STATUSES         = ['Pass', 'Non-Detect Pass', 'Group Sum', 'Information Only', 'Additional Testing Needed'];
+		const POSTIIVE_SUMMARY_STATUSES = ['Pass', 'Non-Detect Pass', 'Additional Testing Needed', 'Conditional Pass'];
+		svc.selectionTypes = [ "", "Program", "Category", "Class", "Test", "Attribute" ];
+
+		const OPERATORS = {
+			'&lt;':           (a, b) => a &lt; b,
+			'!=':          (a, b) => a != b,
+			'&lt;=':          (a, b) => a &lt;= b,
+			'=':           (a, b) => a === b,
+			'>':           (a, b) => a > b,
+			'>=':          (a, b) => a >= b,
+			null:          () => false,
+			undefined:     () => false,
+			'contains':    String.includes,
+			'ends with':   String.endsWith,
+			'starts with': String.startsWith
+		};
+
+		const STATUS_CONDITIONAL_PASS = "Conditional Pass";
+		const STATUS_NON_DETECT_PASS  = "Non-Detect Pass";
+		const ANSWER_NON_DETECT       = "Non Detect";
+		const QUANTITATIVE            = "Quantitative";
+		const QUALITATIVE             = "Qualitative";
+
+		//field mapping for Remote Actions returning SObjects
+		const fieldMap = svc.fieldMap = { };
+		svc.fieldMap.productTest = {
+			//Product_Test__r fields
+			id: "Id",
+			globalId: "Global_Id__c",
+			testingType: input => CommonUtils.getVar("Testing_Type__c", input) || QUANTITATIVE,
+			groupId:  "Product_Test_Group_Global_Id__c",
+			groupName:  "Product_Test_Group__r.Name",
+			measureType: "Measure_Type__c",
+			method: "Test_Method_Long__c",
+			name: "Name",
+			required: "Required__c",
+			category: "Product_Test_Category__r.Label__c",
+			categoryId: "Product_Test_Category__c",
+			certificateIds: input => String.split(CommonUtils.getVar("Certificates__c", input), ';', true, true),
+			testClass: "Test_Class__r.Label__c",
+			testClassId: "Test_Class__c",
+			testId: "Test__c",
+			testName: "Test__r.Test_Name__c",
+			//$testClassAndName: (input, test) => String.equals(test.testClass, test.testName) ? test.testName : String.appendString(test.testClass, "\n", test.testName),
+			unit: "Unit__c",
+			isExempt: () => false,
+			isGroup: () =>  false,
+			isReused: () => false,
+			$attributes:    input => CommonUtils.remap(CommonUtils.getVar("Product_Test_Attributes__r", input), fieldMap.attribute),
+			columns:        input => CommonUtils.remap(CommonUtils.getVar("Product_Test_Columns__r", input), fieldMap.productTestColumn),
+			exceptionRules: input => CommonUtils.remap(CommonUtils.getVar("Product_Test_Rules__r",   input), fieldMap.productTestRule),
+			$oldValues:     input => Array.sortObjectsBy(angular.fromJson(CommonUtils.getVar("JSON_Data__c", input)), "version", true),
+			limits:         input => CommonUtils.remap(CommonUtils.getVar("Product_Test_Limits__r",  input), fieldMap.productTestLimit),
+			$typeLimits:    (input, test) => Array.groupBy(test.limits, "limitType")
+		};
+
+		svc.fieldMap.attribute = {
+			name: "Name",
+			id: "Id",
+			value: "Attribute_Value__c",
+			attributeId: "Attribute__c",  //"Attribute__r.Id",
+			attributeName: "Attribute__r.Name",
+			attributeKey: "Attribute__r.Unique_ID__c",
+			type: "Attribute__r.Value_Type__c"
+		};
+
+		svc.fieldMap.productTestAnswer = {
+			//$pt: "$pt",
+			isGroup: input => !!CommonUtils.getVar("$cq.Product_Test_Group__r", input),
+			testingType: input => CommonUtils.getVar("$pt.Testing_Type__c", input) || QUANTITATIVE,
+
+			//containerAnswer fields
+			containerAnswerId: "Id",
+			answer: "Supplied_Answer__c",
+			answerNum: function(ca, output) {
+				if(String.isNotEmpty(output.answer) &amp;&amp; svc.isQuantitative(output) &amp;&amp; !svc.isNonDetect(output)) {
+					var ans = parseInt(output.answer, 10);
+					delete output.answer;
+					return ans;
+				}
+			},
+			sampleSize: "Sample_Size__c",
+			defectiveSize: "Defective_Size__c",
+			isReused: "Is_Reused__c",
+			regulatoryStatus: "Status_Regulatory__c",
+			brandStatus: "Status_Brand__c",
+			componentName: "Large_Answer__c",
+			version: "Version_Number__c",
+			$submissionStatus: "Submitted_Status__c",
+			$rowNumber: "Row_Number__c",
+			$conditionalPass: (input, test) => svc.enableConditionalPass(test) &amp;&amp; (test.regulatoryStatus == "Conditional Pass" || test.brandStatus == "Conditional Pass"),
+
+			//Container_Question__r fields
+			containerQuestionId: "$cq.Id",
+			containerQuestionGlobalId: "$cq.Global_Id__c",
+			isExempt: "$cq.Exempt__c",
+			$addedBy: "$cq.Creator_Global_Id__c",
+
+			//Product_Test__r fields
+			globalId: "$pt.Global_Id__c",
+			id: "$pt.Id",
+			groupId: [ "$pt.Product_Test_Group_Global_Id__c", "$cq.Product_Test_Group__r.Global_Id__c" ],
+			groupName: [ "$pt.Product_Test_Group__r.Name", "$cq.Product_Test_Group__r.Name" ],
+			measureType: "$pt.Measure_Type__c",
+			method: "$pt.Test_Method_Long__c",
+			name: "$pt.Name",
+			required: "$pt.Required__c",
+			category: "$pt.Product_Test_Category__r.Label__c",
+			categoryId: "$pt.Product_Test_Category__c",
+			certificateIds: input => String.split(CommonUtils.getVar("$pt.Certificates__c", input), ';', true, true),
+			testClass: "$pt.Test_Class__r.Label__c",
+			testClassId: "$pt.Test_Class__c",
+			testId: "$pt.Test__c",
+			testName: ["$pt.Test__r.Test_Name__c", "$pt.Name"],
+			//$testClassAndName: (input, test) => String.equals(test.testClass, test.testName) ? test.testName : String.appendString(test.testClass, "\n", test.testName),
+			nbTests: "$cq.Product_Test_Group__r.Product_Tests__r.length",
+			unit: "$pt.Unit__c",
+			columns:        input => CommonUtils.remap(CommonUtils.getVar("$pt.Product_Test_Columns__r", input), fieldMap.productTestColumn),
+			$attributes:    input => CommonUtils.remap(CommonUtils.getVar("$pt.Product_Test_Attributes__r", input), fieldMap.attribute),
+			exceptionRules: input => CommonUtils.remap(CommonUtils.getVar("$pt.Product_Test_Rules__r",   input), fieldMap.productTestRule),
+			limits:         input => CommonUtils.remap(CommonUtils.getVar("$pt.Product_Test_Limits__r",  input), fieldMap.productTestLimit),
+			$typeLimits:    (input, output) => Array.groupBy(output.limits, "limitType"),
+			$oldValues:     function(input) {
+				var history = Array.sortObjectsBy(angular.fromJson(CommonUtils.getVar("JSON_Data__c", input)), "version", true);
+				//if most recent history value is current value, remove from history.
+				var currentValue = CommonUtils.getVar("Supplied_Answer__c", input);
+				if(Array.isNotEmpty(history) &amp;&amp; history[0].value == currentValue)
+					history.shift();
+				return history;
+			}
+		};
+
+		fieldMap.productTestColumn = {
+			id:              "Id",
+			name:            "Name",
+			globalId:        "Global_Id__c",
+			productTestId:   "Product_Test__c",
+			value:           "Value__c",
+			viewableOnForms: "Viewable_on_Forms__c"
+		};
+
+		fieldMap.productTestLimit = {
+			id: "Id",
+			globalId: "Global_Id__c",
+			name: "Name",
+			limitType: limit => CommonUtils.getVar("Type__c", limit, "").toLowerCase(),
+			order: "Order__c",
+			operator: "Operator__c",
+			limitRange: "Limit__c",
+			exceedStatus: "Exceed_Status__c",
+			message: "Limit_Message__c"
+		};
+
+		fieldMap.productTestRule = {
+			id:             "Rule__c",
+			name:           ["Rule__r.Name", "Name"],
+			globalId:       "Rule_Global_Id__c",
+			objectId:       "Product_Test__c",
+			objectGlobalId: "Product_Test_Global_Id__c",
+			objectType:     "Rule__r.Object_Type__c",
+			actionType:     "Rule__r.Rule_Actions__r.0.Action_Type__c",
+			attributeId:    "Rule__r.Rule_Criteria__r.0.Attribute__c",
+			attributeKey:   "Rule__r.Rule_Criteria__r.0.Attribute__r.Unique_ID__c",
+			attributeName:  "Rule__r.Rule_Criteria__r.0.Attribute__r.Name",
+			operator:       "Rule__r.Rule_Criteria__r.0.Operator__c",
+			value:          "Rule__r.Rule_Criteria__r.0.Value__c"
+			//actions:  input => CommonUtils.remap(CommonUtils.getVar("Rule__r.Rule_Actions__r",  input), fieldMap.ruleActions),
+			//criteria: input => CommonUtils.remap(CommonUtils.getVar("Rule__r.Rule_Criteria__r", input), fieldMap.ruleCriteria)
+		};
+
+		fieldMap.ruleActions = {
+			id: "Id",
+			name: "Name",
+			globalId: "Global_Id__c",
+			ruleId: "Rule__c",
+			actionType: "Action_Type__c"
+		};
+
+		fieldMap.ruleCriteria = {
+			id: "Id",
+			name: "Name",
+			globalId: "Global_Id__c",
+			ruleId: "Rule__c",
+			attributeId: "Attribute__c",
+			attributeKey: "Attribute__r.Unique_ID__c",
+			attributeName: "Attribute__r.Name",
+			operator: "Operator__c",
+			value: "Value__c"
+		};
+		//end init
+
+		//Load Product Test and Executive Summary data from back end
+		svc.loadData = function()
+		{
+			if(svc.loadDataPromise) {
+				console.log("ProductTestService loadData already loaded.", ++svc.nbLoads);
+				return svc.loadDataPromise;
+			}
+
+			RemoteActionService.callRemoteAction("loadProductTestExecutiveSummary", svc.containerGlobalId, "data.productTestExecutiveSummary", svc);
+			RemoteActionService.callRemoteAction("getAllAttributes",         [], "data.allAttributes", svc);
+			RemoteActionService.callRemoteAction("getProductTestAttributes", [], "data.productTestAttributes", svc);
+			return svc.loadDataPromise = svc.loadProductTestResults(true);
+//				.then( result => svc.data.productTests.sortObjectsBy("testClass").sortObjectsBy("isGroup").sortObjectsBy("groupName") );
+		};
+
+		var allContainerQuestionsCount;
+		var lastContainerQuestionId;
+		//reload ProductTestResults grid after saving
+		svc.loadProductTestResults = function(reloadProductTests)
+		{
+			// loadContainerQuestions / loadProductTestAnswers
+			return RemoteActionService.callRemoteAction("loadProductTestResults", [svc.containerGlobalId, lastContainerQuestionId, allContainerQuestionsCount], function(result)
+			{
+				allContainerQuestionsCount = result.allRecordsCount;
+				lastContainerQuestionId = result.lastLoadedRecordId;
+				var chunk = svc.onLoadContainerQuestions(result.records);
+				console.log("ProductTestService reloadProductTests:", reloadProductTests);
+				if(!svc.data.productTests || reloadProductTests)
+					svc.data.productTests = chunk;
+				else
+					svc.data.productTests.pushAll(chunk);
+
+				console.log("ProductTestService loadData loaded:", ++svc.nbLoads, svc.data.productTests);
+
+				console.log("loadProductTestResults allContainerQuestionsCount=", allContainerQuestionsCount);
+				console.log("loadProductTestResults lastContainerQuestionId=", lastContainerQuestionId);
+				if(svc.data.productTests.length &lt; allContainerQuestionsCount)
+				{
+					svc.dataLoaded = false;
+					svc.loadProductTestResults(false);
+				}
+				else
+				{
+					lastContainerQuestionId = null;
+					allContainerQuestionsCount = null;
+					svc.calculateLimitsForAllProductTests();
+					svc.calculateLimitTypesForExecutiveSummary();
+					svc.calculateSummaryOfFailures();
+					svc.data.containsBrandLimit = svc.containsProductTestLimit("brand");
+					svc.data.containsRegulatoryLimit = svc.containsProductTestLimit("regulatory");
+					svc.showProductTestComments();
+					svc.dataLoaded = true;
+					console.log("loadProductTestResults all data loaded");
+				}
+			}, svc);
+		};
+
+		svc.setComments = function(comments) {
+			svc.data.commentsByProductTest = Array.groupBy(comments, "containerQuestionGlobalId");
+			svc.showProductTestComments();
+			return svc.data.commentsByProductTest;
+		};
+
+		svc.showProductTestComments = function()
+		{
+			angular.forEach(svc.data.productTests, function(test)
+			{
+				if(!svc.data.commentsByProductTest[test.containerQuestionGlobalId])
+					svc.data.commentsByProductTest[test.containerQuestionGlobalId] = [];
+
+				test.$comments = svc.data.commentsByProductTest[test.containerQuestionGlobalId];
+				test.$showNewComment = test.$comments.some(c => !c.isMessageRead &amp;&amp; c.ubeAccount != svc.settings.currentUbeSFId);
+			});
+		};
+
+		//convert Container_Question__c with test and answers to ProductTest DTOs
+		svc.onLoadContainerQuestions = function(containerQuestions)
+		{
+			//svc.containerQuestions = containerQuestions;
+			var containerAnswers = [];
+
+			if(Array.isEmpty(containerQuestions)) return [];
+
+			angular.forEach(containerQuestions, function(cq)
+			{
+				var testAnswers = CommonUtils.getVar("Container_Answers__r", cq);
+				//if no answer for this CQ, add a blank one
+				if(!testAnswers) testAnswers = cq.Container_Answers__r = [];
+				if(!testAnswers.length)	testAnswers.push({});
+
+				//set related objects before remapping answers: Container Question__r, Product_Test__r|Product_Test_Group__r
+				angular.forEach(testAnswers, ca => {
+					ca.$cq = cq;
+					ca.$pt =  CommonUtils.getFirstVar(["Product_Test__r", "Product_Test_Group__r"], cq);
+					containerAnswers.push(ca);
+				});
+			});
+			containerAnswers.sortObjectsBy("Row_Number__c");
+			return CommonUtils.remap(containerAnswers, fieldMap.productTestAnswer);
+		};
+
+		svc.data.productTestsLoaded = function()
+		{
+			return !!svc.data.productTests;
+		};
+
+		//get combined list of attributes from current product UP relationships
+		svc.getProductAttributes = function()
+		{
+			svc.productRelationship = svc.settings.productRelationship;
+			svc.productAttributes = {};
+			for(let r = 0; r &lt; Array.getCount(svc.productRelationship); r++)
+				for(let a = 0; a &lt; Array.getCount(svc.productRelationship[r].attributes); a++)
+				{
+					let attr = svc.productRelationship[r].attributes[a];
+					svc.productAttributes[attr.key] = attr.value;
+				}
+			return svc.productAttributes;
+		};
+
+		//check that Product Components section and its component names are not empty
+		svc.hasProductComponents = function() {
+			return Array.isNotEmpty(svc.data.components) &amp;&amp; String.isNotEmpty(svc.data.componentNameQuestionId)
+				&amp;&amp; svc.data.components.some(c => String.isNotBlank(c[svc.data.componentNameQuestionId]) );
+		};
+
+		svc.isRegulatory = function(test) {
+			return Array.isNotEmpty(test.limits) &amp;&amp; test.limits.some(l => l.limitType == "regulatory");
+		};
+
+		svc.isBrand = function(test) {
+			return Array.isNotEmpty(test.limits) &amp;&amp; test.limits.some(l => l.limitType == "brand");
+		};
+
+		svc.isQuantitative = function(test) {
+			return test &amp;&amp; test.testingType === QUANTITATIVE;
+		};
+
+		svc.isQualitative = function(test) {
+			return test &amp;&amp; test.testingType === QUALITATIVE;
+		};
+
+		svc.isNonDetect = function(test) {
+			return test &amp;&amp; test.answer === ANSWER_NON_DETECT;
+		};
+
+		svc.setNonDetect = function(test)
+		{
+			test.answer = ANSWER_NON_DETECT;
+			test.answerNum = null;
+		};
+
+		svc.clearNonDetect = function(test)
+		{
+			test.answer = '';
+			test.answerNum = null;
+			svc.clearTestStatus(test);
+		};
+
+		svc.toggleNonDetect = function(test) {
+			if(svc.isNonDetect(test))
+				svc.clearNonDetect(test);
+			else
+				svc.setNonDetect(test);
+
+			svc.getLimitCalculationResult(test);
+		};
+
+		svc.getLimitCalculationResult = function (test)
+		{
+			svc.calculateLimitsForProductTest(test);
+
+			//if test is part of a group sum: recalculate result for this group sum
+			//=> recalculate answerNum = sum for this group / status for this group sum based on its limits
+			var groupSum = svc.groupSumInForm(test);
+			if(groupSum) {
+				if (!svc.isNonDetect(test))
+					svc.clearNonDetect(groupSum);
+
+				svc.refreshGroupSum(groupSum);
+				svc.calculateLimitsForProductTest(groupSum);
+			}
+
+			svc.calculateLimitTypesForExecutiveSummary();
+			svc.calculateSummaryOfFailures();
+			svc.addRemoveAdditionalTesting(svc.data.productTests, test);
+		};
+
+		svc.calculateLimitsForAllProductTests = function()
+		{
+			angular.forEach(svc.data.productTests, test => svc.calculateLimitsForProductTest(test));
+			return svc.data.productTests;
+		};
+
+		//CR-1281 new test limit algorithm
+		//limitType = "regulatory" or "brand"
+		svc.calculateLimitsForProductTest = function(test, limitType)
+		{
+			if(!test || Array.isEmpty(test.limits) || !test.$typeLimits)
+				return;
+
+			//if not specified calcule test result for all limit types
+			if(!limitType)
+				return limitTypes.forEach(type => svc.calculateLimitsForProductTest(test, type));
+
+			//AP-883 on initial load: "Conditional Pass" is stored in regulatoryStatus or test.brandStatus
+			if(svc.enableConditionalPass(test) &amp;&amp; (test.regulatoryStatus == STATUS_CONDITIONAL_PASS || test.brandStatus == STATUS_CONDITIONAL_PASS)) {
+				test.$conditionalPass = true;
+			}
+
+			if(test.$conditionalPass &amp;&amp; svc.testStatusIs(test, "FAIL", limitType)) {
+				svc.setTestStatus(test, limitType, STATUS_CONDITIONAL_PASS);
+				console.log("setting Conditional Pass on:", test);
+			}
+			else if(String.isEmpty(test.answerNum) &amp;&amp; String.isEmpty(test.answer))
+				svc.clearTestStatus(test);
+			else if(svc.isNonDetect(test))
+				svc.setTestStatus(test, limitType, STATUS_NON_DETECT_PASS);
+			else if(svc.isQuantitative(test))
+				svc.calculateQuantitativeTestResult(test, limitType);
+			else if(svc.isQualitative(test))
+				svc.calculateQualitativeTestResult(test, limitType);
+		};
+
+		//**************************** Number / Quantitative ***************************
+		//check test.answerNum, get limit by test.answerNum , first limit with operator result = true sets status
+		//what if all limits are false ?
+		svc.calculateQuantitativeTestResult = function(test, limitType)
+		{
+			const limits = test.$typeLimits[limitType];
+			if(Array.isEmpty(limits)) return;
+
+			for(let i = 0; i &lt; limits.length; i++)
+			{
+				let limit = limits[i];
+				let operatorResult = OPERATORS[limit.operator](test.answerNum, limit.limitRange);
+				if(operatorResult) {
+					svc.setTestStatus(test, limitType, limit.exceedStatus);
+					return limit;
+				}
+			}
+
+			svc.setTestStatus(test, limitType, null);
+		};
+
+		//****************************** Text / Qualitative ***************************
+		//check test.answer , get limit by test.answer , set status
+		svc.calculateQualitativeTestResult = function(test, limitType)
+		{
+			var limits = test.$typeLimits[limitType];
+			if(Array.isEmpty(limits)) return;
+
+			if(!limits.by)
+				limits.indexBy("message", true);
+
+			var limit = limits.by.message[test.answer];
+			if(limit) {
+				svc.setTestStatus(test, limitType, limit.exceedStatus);
+				return limit;
+			}
+
+			svc.setTestStatus(test, limitType, null);
+		};
+
+		//Calculate Overall Test Result Status
+		svc.calculateLimitTypesForExecutiveSummary = function()
+		{
+			let errorValue = {};
+			//clean all limit summary before new calculation
+			for(let i = 0; i &lt; limitTypes.length; i++)
+				svc.data.productTestExecutiveSummary[limitTypes[i] + "LimitSummary"] = null;
+
+			var exemptProductTestsNumber = 0;
+			for(let i = 0; i &lt; Array.getLength(svc.data.productTests); i++)
+			{
+				if(svc.data.productTests[i].isExempt) {
+					exemptProductTestsNumber++;
+					continue;
+				}
+
+				for(let k = 0; k &lt; limitTypes.length; k++) //brand, regulatory
+				{
+					let limitType = limitTypes[k];
+					let limitSummaryField = limitType + "LimitSummary"; // brandLimitSummary, regulatoryLimitSummary, etc;
+
+					//if we already have Fail, other limits do not matter
+					let testStatus = svc.getTestStatus(svc.data.productTests[i], limitType);
+					if(testStatus !== "Additional Testing Needed" &amp;&amp; errorValue[limitType] === "Fail")
+						break;
+
+					if(POSTIIVE_SUMMARY_STATUSES.includes(testStatus))
+						testStatus = "Pass";
+
+					let executiveSummaryExceedStatusIndex = TEST_STATUSES.indexOf(svc.data.productTestExecutiveSummary[limitSummaryField]);
+					let productTestExceedStatusIndex = TEST_STATUSES.indexOf(testStatus);
+					if(productTestExceedStatusIndex &lt;= executiveSummaryExceedStatusIndex)
+						continue;
+
+					//fail index > pass index, keep worse exceedStatus
+					svc.data.productTestExecutiveSummary[limitSummaryField] = testStatus;
+					if(NEGATIVE_STATUSES.includes(testStatus))
+						errorValue[limitType] =  errorValue[limitType] &amp;&amp; errorValue[limitType] !== "Fail" ? testStatus : errorValue[limitType];
+					else if(testStatus === "Additional Testing Needed" &amp;&amp; errorValue[limitType])
+						svc.data.productTestExecutiveSummary[limitSummaryField] = null;
+					else if(errorValue[limitType])
+						svc.data.productTestExecutiveSummary[limitSummaryField] = errorValue[limitType];
+				}
+			}
+
+			//if all tests are Exempt, then RegulatoryLimitSummary and BrandLimitSummary = "Pass"
+			if(exemptProductTestsNumber == Array.getLength(svc.data.productTests)) {
+				for(let i = 0; i &lt; limitTypes.length; i++) {
+					if(!svc.data.productTestExecutiveSummary[limitTypes[i] + "LimitSummary"])
+						svc.data.productTestExecutiveSummary[limitTypes[i] + "LimitSummary"] = "Pass";
+				}
+			}
+
+			svc.calculateCorrectiveActionRequired();
+			//console.log('ProductTestService calculateLimitTypesForExecutiveSummary:', svc.data.productTestExecutiveSummary);
+			return svc.data.productTestExecutiveSummary;
+		};
+
+		svc.calculateCorrectiveActionRequired = function() {
+			return svc.data.productTestExecutiveSummary.isCorrectiveActionRequired = svc.isFail(svc.data.productTestExecutiveSummary.regulatoryLimitSummary) || svc.isFail(svc.data.productTestExecutiveSummary.brandLimitSummary);
+		};
+
+		// Test Filtering methods
+		svc.containsTests = filter => Array.some(svc.data.productTests, filter);
+
+		svc.containsQuantitativeTests = () => svc.containsTests(svc.isQuantitative);
+		svc.containsQualitativeTests  = () => svc.containsTests(svc.isQualitative);
+		svc.containsRequiredTests =     () => svc.containsTests(t => t &amp;&amp; t.required);
+
+		//check if there is at least 1 product test that has limits(s) of the specified type (brand or regulatory)
+		svc.containsProductTestLimit = function(limitType) {
+			return String.isNotEmpty(limitType) &amp;&amp; Array.some(svc.data.productTests, test => test.$typeLimits &amp;&amp; test.$typeLimits[limitType]);
+		};
+
+		//Calculate Summary Of Failures
+		svc.calculateSummaryOfFailures = function()
+		{
+			//reset failures per limit types before calculating
+			angular.forEach(limitTypes, function(limitType) {
+				svc.data.summaryOfFailures[limitType] = [];
+				svc.data.summaryOfFailures[limitType].byId = {};
+			});
+
+			if(Array.isEmpty(svc.data.productTests))
+				return svc.data.summaryOfFailures;
+
+			for(let i = 0; i &lt; Array.getLength(svc.data.productTests); i++)
+			{
+				let test = svc.data.productTests[i];
+				if(test.isExempt)
+					continue;
+
+				for(let k = 0; k &lt; limitTypes.length; k++)
+				{
+					let limitType = limitTypes[k];
+					let testStatus = svc.getTestStatus(test, limitType);
+					if(String.isEmpty(testStatus) || POSITIVE_STATUSES.includes(testStatus))  //only include Warning Or Fail test results
+						continue;
+
+					svc.data.summaryOfFailures[limitType].push(test);
+					svc.data.summaryOfFailures[limitType].byId[test.id] = testStatus;
+				}
+			}
+
+			angular.forEach(limitTypes, function(limitType) {
+				if(Array.isEmpty(svc.data.summaryOfFailures[limitType])) return;
+
+				var failures = svc.data.summaryOfFailures[limitType];
+				failures.columns = failures.paginate(10);
+			});
+
+			return svc.data.summaryOfFailures;
+		};
+
+		svc.addRemoveAdditionalTesting = function(productTests, test)
+		{
+			if(!productTests)
+				productTests = svc.data.productTests;
+
+			var indexesToRemove = [];
+			var testsToAdd = [];
+			for(let i = 0; i &lt; Array.getLength(test.limits); i++)
+			{
+				let limit = test.limits[i];
+				let addClass = limit.additionalTestClass;
+				if(!addClass) continue;
+
+				for(let j = 0; j &lt; Array.getLength(test.additionalTests.productTests); j++)
+				{
+					let addTest = test.additionalTests.productTests[j];
+					let operatorResult = OPERATORS[limit.operator](test.answerNum, limit.limitRange);
+					if(addTest.testClassId == addClass &amp;&amp; operatorResult &amp;&amp; !productTests.contains(addTest)){
+						testsToAdd.push(addTest);
+					}else if(addTest.testClassId == addClass &amp;&amp; !operatorResult &amp;&amp; (testsToAdd.contains(addTest) || productTests.contains(addTest))){
+						indexesToRemove.push(productTests.indexOf(addTest));
+					}
+				}
+			}
+
+			angular.forEach(testsToAdd, function(element) {
+				if(Array.none(productTests,  t => t.globalId == element.globalId))
+					productTests.push(element);
+			});
+
+			for(let k = indexesToRemove.length - 1; k >= 0; k--) {
+				let index = indexesToRemove[k];
+				Array.remove(productTests, productTests[index]);
+			}
+		};
+
+		svc.deleteAdditionalTesting = function(productTests, test)
+		{
+			if(!productTests)
+				productTests = svc.data.productTests;
+
+			if(!test || !test.additionalTests)
+				return;
+
+			var indexesToRemove = [];
+			for(let i = 0; i &lt; productTests.length; i++) {
+				if(productTests[i].globalId !== test.globalId &amp;&amp; !Array.some(test.additionalTests.productTests, t => t.globalId == productTests[i].globalId))
+					indexesToRemove.push(i);
+			}
+
+			for(let i = indexesToRemove.length - 1; i >= 0; i--) {
+				let index = indexesToRemove[i];
+				Array.remove(productTests, productTests[index]);
+			}
+		};
+
+		svc.applyAllExceptionRules = function(productTests)
+		{
+			if(!productTests)
+				productTests = svc.data.productTests;
+
+			console.log("ProductTestService", "applyAllExceptionRules:");
+			angular.forEach(productTests, svc.applyExceptionRules);
+		};
+
+		svc.applyExceptionRules = function(test)
+		{
+			var nbRules = Array.getCount(test.exceptionRules);
+			if(!nbRules)
+				return;
+
+			console.log("applyExceptionRules:", test.testName, "rules", nbRules, test.exceptionRules);
+			angular.forEach(test.exceptionRules, function(rule) {
+				if(svc.matchAttribute(rule, test))
+					svc.applyRule(rule, test);
+			});
+
+			svc.afterApplyExceptionRules(test);
+		};
+
+		//what to do after applying rules to a productTest
+		svc.afterApplyExceptionRules = function(test)
+		{
+			if(!test.$deleted)
+				svc.getLimitCalculationResult(test);
+		};
+
+		svc.matchAttribute = function(rule, test)
+		{
+			var productAttribute = svc.productAttributes &amp;&amp; svc.productAttributes[rule.attributeKey];
+			//if(String.isEmpty(productAttribute)) return false;
+
+			var operator = OPERATORS[rule.operator];
+			var result = operator(productAttribute, rule.value);
+			//console.log("attribute match:", result, rule.attributeKey, rule.operator, rule.value, "action:", rule.actionType);
+			return result;
+		};
+
+		svc.applyRule = function(rule, test)
+		{
+			if(!test || !rule || String.isEmpty(rule.actionType))
+				return;
+
+			console.log("apply rule:", test.testName, rule.attributeKey, rule.value, "action:", rule.actionType);
+
+			if(rule.actionType == "Required")
+				test.required = true;
+			else if(rule.actionType == "Optional")
+				test.required = false;
+			else if(rule.actionType == "Exempt")
+				test.isExempt = true;
+			else if(rule.actionType == "Remove")
+				test.$deleted = true;
+		};
+
+		//Validate All Test results : invalid if required and non-exempt and no result value
+		//OR if fail and no defective size entered
+		svc.validateTestResults = function()
+		{
+			if(Array.isEmpty(svc.data.productTests))
+				return "NO_TESTS";          //if no product tests on the current form
+
+			//exclude group sums from validation
+			var individualProductTests = Array.filter(svc.data.productTests, t => !t.isGroup);
+			//if(individualProductTests.every( t => t.isExempt ))
+			//	return "ALL_EXEMPT";        //if all individual product tests are exempt
+
+			//if(individualProductTests.every( t => t.isExempt || String.isEmpty(t.answer) &amp;&amp; String.isEmpty(t.answerNum) ))
+			if(individualProductTests.every( t => !t.isExempt &amp;&amp; String.isEmpty(t.answer) &amp;&amp; String.isEmpty(t.answerNum) ))
+				return "ALL_EMPTY";         //if all individual product tests have no result
+
+			if(individualProductTests.some(svc.isTestResultInvalid))
+				return "EMPTY_REQUIRED";    //if some required product tests have no result
+
+			//AP-815: validate defective size required if test is fail
+			var displaySampleDefectiveSize = CommonUtils.getVar("data.program.displaySampleDefectiveSize", svc);
+			if(displaySampleDefectiveSize &amp;&amp; individualProductTests.some(t => svc.testIs(t, 'FAIL') &amp;&amp; String.isEmpty(t.defectiveSize)) )
+				return "DEFECTIVE_SIZE_REQUIRED";    //if some required product tests have no result
+
+			if(!svc.data.productTestExecutiveSummary.dateTested)
+				return "DATE_TESTED_REQUIRED";
+
+			//if all test results are valid
+			return false;
+		};
+
+		svc.getInvalidTestResults = function() {
+			return Array.filter(svc.data.productTests, svc.isTestResultInvalid);
+		};
+
+		//AP-81 test.regulatoryStatus or test.brandStatus is fail
+		svc.testIs = function(test, status)
+		{
+			for(let i = 0; i &lt; svc.limitTypes.length; i++)
+				if(svc.testStatusIs(test, status, svc.limitTypes[i]))
+					return true;
+
+			return false;
+		};
+
+		svc.getTestStatus = (test, limitType)         => (!test || test.isExempt) ? "" : test[limitType + "Status"];
+		svc.setTestStatus = (test, limitType, value) => test[limitType + "Status"] = value;
+		svc.testStatusIs  = (test, status, limitType) => String.equals(svc.getTestStatus(test, limitType), status);
+		svc.isFail = status => NEGATIVE_STATUSES.includes(status);
+
+		//a test result is invalid if required and non exempt and no result value
+		svc.isTestResultInvalid = t => t &amp;&amp; t.required &amp;&amp; !t.isExempt &amp;&amp; String.isEmpty(t.answer) &amp;&amp; String.isEmpty(t.answerNum);
+		svc.isTestResultValid   = t => !svc.isTestResultInvalid(t);
+
+		//clear all limit types on product Test
+		svc.clearTestStatus = function(test) {
+			angular.forEach(limitTypes, type => test[type + "Status"] = null);
+		};
+
+		//clear all current test result values and status
+		svc.clearTestResults = function()
+		{
+			angular.forEach(svc.data.productTests, t => t.answer = t.answerNum = t.sampleSize = t.defectiveSize = null);
+
+			//refresh product test section
+			svc.calculateLimitsForAllProductTests();
+			svc.calculateLimitTypesForExecutiveSummary();
+			svc.calculateSummaryOfFailures();
+
+			return svc.data.productTests;
+		};
+
+		//*** PRODUCT TEST ADD ***/
+		svc.loadTestingPrograms = function()
+		{
+			//if default testing program is set: lock TP selection, list categories
+			if(svc.data.program) {
+				svc.data.testingPrograms = [ svc.data.program ];
+				svc.loadTestCategories(svc.data.program);
+				//svc.searchProductTests();
+			}
+
+			if(svc.data.testingPrograms)
+				return RemoteActionService.resolvePromise(svc.data.testingPrograms);
+
+			return RemoteActionService.callRemoteAction("getTestingPrograms", [], function(result)
+			{
+				svc.data.testingPrograms = CommonUtils.sobjectToCamelCase(result);
+				//if(Array.isEmpty(svc.data.testingPrograms)) svc.searchProductTests();
+			}, svc);
+		};
+
+		svc.loadTestCategories = function(program)
+		{
+			var programId = program &amp;&amp; program.id || program;
+			if(!programId)
+				return RemoteActionService.resolvePromise([]);
+
+			return RemoteActionService.callRemoteAction("getTestCategories", [ programId ], function(result) {
+				svc.data.testCategories = CommonUtils.sobjectToCamelCase(result);
+				if(Array.getLength(svc.data.testCategories) == 1)
+					svc.data.category = svc.data.testCategories[0];
+			}, svc);
+		};
+
+		//list test names in selected test class
+		svc.getTestNames = function(testClass)
+		{
+			if(!arguments.length)
+				testClass = svc.data.testClass;
+			var tests = testClass &amp;&amp; svc.data.testsByClass ? svc.data.testsByClass[testClass] : [];
+
+			// prevent to show product test for select several time
+			tests = Array.filter(tests, svc.testNotInForm);
+			return svc.data.testNames = Array.distinct(tests, "testName", true);
+		};
+
+		svc.searchProductTests = function()
+		{
+			var id =  CommonUtils.getVar("data.category.id", svc) || CommonUtils.getVar("data.program.id", svc);
+			if(!id)
+				return RemoteActionService.resolvePromise([]);
+
+			return RemoteActionService.callRemoteAction("searchProductTestsByAttributes", [ id, svc.data.attributeFilters ], function(result)
+			{
+				svc.data.testName = svc.data.testClass = null; //clear previous test class and name selection
+				svc.data.allSelectedProductTests = CommonUtils.remap(result, fieldMap.productTest) || [];
+				svc.updateTestList();
+			}, svc);
+		};
+
+		svc.updateTestList = function()
+		{
+			svc.data.allSelectedProductTests = svc.data.allSelectedProductTests.sortObjectsBy("testClass").sortObjectsBy("isGroup").sortObjectsBy("groupName");
+
+			//get group sums and their individual tests
+			svc.data.allSelectedProductTests.byGroupSum = svc.getTestsByGroupSum(svc.data.allSelectedProductTests);
+			//DE7530: remove from selectedProductTests those that are already in svc.data.productTests
+			svc.data.selectedProductTests = Array.diff (svc.data.allSelectedProductTests, svc.data.productTests, "globalId");
+			svc.data.selectedGroupSums   = Array.filter(svc.data.selectedProductTests, t => t.isGroup);
+
+			svc.data.testClasses  = svc.data.selectedProductTests.distinct("testClass", true);
+			svc.data.testsByClass = svc.data.selectedProductTests.groupBy("testClass");
+			svc.data.testNames    = svc.data.selectedProductTests.distinct("testName", true);
+			svc.data.testsByName  = svc.data.selectedProductTests.groupBy("testName");
+
+			// DE8082: set up list with additional tests classes to filter later
+			svc.additionalTestsList = [];
+			angular.forEach(svc.data.selectedProductTests, function(pt)
+			{
+				angular.forEach(pt.limits, function(limit) {
+					if(limit.additionalTestClass)
+						svc.additionalTestsList.push(limit.additionalTestClass);
+				});
+			});
+		};
+
+		svc.getAttributeSelectionString = function()
+		{
+			return Object.isEmpty(svc.data.attributeFilters) ? ""
+				:  Object.values(svc.data.attributeFilters).filter(String.isNotEmpty).map(v => v.replaceAll(";", " | ")).join(" &amp; ");
+		};
+
+		svc.addSelection = function(selectedItem, selectionLevel)
+		{
+			//update variables due to possible update selectedProductTests outside this ctrl
+			svc.updateTestList();
+
+			if(!selectedItem)
+				return;
+
+			if(!selectionLevel)
+				selectionLevel = 0;
+
+			var item = { name: selectedItem.name || selectedItem, type: svc.selectionTypes[selectionLevel] };
+
+			if(svc.data.testName)
+				item.productTests = svc.data.testsByName[svc.data.testName];
+			else if(svc.data.testClass)
+				item.productTests = svc.data.testsByClass[svc.data.testClass];
+			else
+				item.productTests = svc.data.selectedProductTests;
+
+			item.productTests = Array.filter(item.productTests, svc.testNotInForm);
+			item.groupSums = svc.data.selectedGroupSums;
+
+			if(Array.isEmpty(item.productTests))
+				return;
+
+			if(svc.data.testName)  item.testId     = svc.data.testName;
+			if(svc.data.testClass) item.classId    = svc.data.testClass;
+			if(svc.data.category)  item.categoryId = svc.data.category.id;
+			if(svc.data.program)   item.programId  = svc.data.program.id;
+			var selectedAttributes = svc.getAttributeSelectionString();
+			if(String.isNotEmpty(selectedAttributes)) item.attributes = selectedAttributes;
+
+			item.id = item.attributes || item.testId || item.classId || item.categoryId || item.programId;
+
+			svc.showMessage(item, "added", 1500);
+			//dedup selection
+			if(svc.isSelected(item))
+				return;
+
+			//remove selected item from available items in corresponding list
+			svc.data.selectionMap[item.id] = item;
+			svc.data.selection.push(item);
+
+			//add to productTestResults grid without duplicates
+			if(!svc.data.productTests)
+				svc.data.productTests = [];
+			if(!svc.data.productTests.byId)
+				svc.data.productTests.byId = svc.data.productTests.indexBy("globalId");
+			if(!svc.data.productTests.byName)
+				svc.data.productTests.byName = svc.data.productTests.indexBy("testName");
+
+			for(let i = item.productTests.length - 1; i >= 0; i--)
+			{
+				let pt = item.productTests[i];
+
+				//if product test is already in grid, do not add duplicate
+				if(svc.testInForm(pt)) continue;
+
+				// DE8082 : if selection level is Category or Program -> do not add tests classes that are Additional Testing to other classes.
+				// Those classes should be added when the user inserts a value on the test result and the additonal testing conditions are met
+				if(selectionLevel &lt;= 2 &amp;&amp; svc.isAdditonalProductTest(pt))
+					continue;
+
+				//add pt to the grid
+				svc.data.productTests.unshift(pt);
+				svc.data.productTests.byId[pt.globalId] = pt;
+				svc.data.productTests.byName[pt.testName] = pt;
+				//svc.applyExceptionRules(pt);
+			}
+
+			//for each group sum in selection: is it complete ? if yes, add sum and move whole group to the top.
+			svc.data.productTests.byGroupSum = svc.getTestsByGroupSum(svc.data.productTests);
+
+			console.log("adding group sums ", item.groupSums);
+			for(let i = 0; i &lt; Array.getCount(item.groupSums); i++)
+			{
+				let groupSum = item.groupSums[i];
+				if(svc.testInForm(groupSum) || !svc.isGroupComplete(groupSum))
+					continue;
+
+				//insert group sum at the top
+				svc.data.productTests.unshift(groupSum);
+				svc.data.productTests.byId[groupSum.globalId] = groupSum;
+				svc.data.productTests.byName[groupSum.testName] = groupSum;
+
+				//move tests to the top, just above their sum
+				let groupTests = svc.data.productTests.byGroupSum[groupSum.globalId];
+				for(let j = Array.getCount(groupTests) - 1; j >= 0; j--)
+					svc.data.productTests.move(groupTests[j], 0);
+			}
+
+			//calculate limits for newly added tests
+			//svc.applyAllExceptionRules();
+			svc.updateTestList();
+			svc.refreshProductTestGrid();
+			FormValidationService.setFormDirty();
+		};
+
+		//check if the current form has new unsaved product tests (without a container Answer Id or container Question Id)
+		svc.hasAddedProductTests = function() {
+			return svc.data.productTests &amp;&amp; Array.isNotEmpty(svc.data.productTests.filter(t => !t.containerAnswerId || !t.containerQuestionId));
+		};
+
+		svc.isAdditonalProductTest = function(pt){
+			return svc.additionalTestsList.includes(pt.testClassId);
+		};
+
+		svc.showMessage = function(item, action, time)
+		{
+			if(svc.isSelected(item))
+				action = "already selected";
+
+			var status = svc.isSelected(item) ? "warning" : "success";
+
+			var message = String.format("{0} &lt;b>{1}&lt;/b> ({2}) {3}.",
+				item.type, item.name, String.plural(item.productTests.length, "test"), action);
+			ToastService.toast(message, status, time, true);
+		};
+
+		//is Product Test already present in Product Test Result Grid? (by globalId or testName)
+		svc.testInForm = function(test)
+		{
+			if(!test || Array.isEmpty(svc.data.productTests))
+				return false;
+
+			var id = test.globalId || test;
+			var name = test.testName || test;
+			return svc.data.productTests.byId   &amp;&amp; svc.data.productTests.byId[id]
+				|| svc.data.productTests.byName &amp;&amp; svc.data.productTests.byName[name];
+		};
+
+		svc.testNotInForm = function(test) {
+			return !svc.testInForm(test);
+		};
+
+		//is Product Test already present in Product Test Result Grid? (by groupId)
+		svc.groupSumInForm = function(test)
+		{
+			if(!svc.data.productTests || !svc.data.productTests.byId || !test)
+				return false;
+
+			var id = test.groupId || test;
+			return svc.data.productTests.byId[id];
+		};
+
+		//is add selection item already selected
+		svc.isSelected = function(item)
+		{
+			return !!svc.data.selectionMap[item.id];
+		};
+
+		svc.countTestsByType = function(productTests)
+		{
+			if(Array.isEmpty(productTests))
+				return "";
+
+			var counts = productTests.countBy(t => t.isGroup ? "sum" : "test");
+			var results = [];
+			for(let key in counts)
+				results.push(String.plural(counts[key], key));
+			return results.join(", ");
+		};
+
+		svc.performTestDeletion = function(test)
+		{
+			if(!test || Array.isEmpty(svc.data.productTests))
+				return;
+
+			console.log("deleting test", test.testName, test);
+
+			//clear selected elements in productTestSelection
+			angular.forEach(svc.data.selection, function(item)
+			{
+				Array.remove(item.productTests, test);
+				if(Array.isEmpty(item.productTests))
+				{
+					delete svc.data.selectionMap[item.id];
+					Array.remove(svc.data.selection, item);
+				}
+			});
+
+			//remove additional tests related to this test
+			svc.deleteAdditionalTesting(svc.data.productTests, test);
+
+			//delete test
+			Array.remove(svc.data.productTests, test.globalId, "globalId");
+
+			var groupId = test.groupId || "0";
+			if(svc.data.productTests.byId)       delete svc.data.productTests.byId[test.globalId];
+			if(svc.data.productTests.byName)     delete svc.data.productTests.byName[test.testName];
+			if(svc.data.productTests.byGroupSum) delete svc.data.productTests.byGroupSum[groupId];
+			delete svc.data.selectionMap[test.testName];
+
+			if(test.containerQuestionId)
+				svc.productTestIdsToDelete.push(test.containerQuestionId);
+
+			//if test is part of a sum: remove group sum since it is no longer complete
+			//clear product test group if no tests of this group are left to delete on backend
+			if(!test.isGroup &amp;&amp; test.groupId)
+			{
+				var groupSum = svc.groupSumInForm(test);
+				if(groupSum)
+				{
+					Array.remove(svc.data.productTests, groupSum, "globalId");
+					delete svc.data.productTests.byId[groupSum.globalId];
+					delete svc.data.productTests.byName[groupSum.testName];
+					delete svc.data.productTests.byGroupSum[groupSum.globalId];
+
+					//clear selected elements in productTestSelection
+					angular.forEach(svc.data.selection, function(item)
+					{
+						Array.remove(item.productTests, groupSum, "globalId");
+						if(Array.isEmpty(item.productTests))
+						{
+							delete svc.data.selectionMap[item.id];
+							Array.remove(svc.data.selection, item);
+						}
+					});
+
+					if(groupSum.containerQuestionId)
+						svc.productTestIdsToDelete.push(groupSum.containerQuestionId);
+				}
+			}
+			FormValidationService.setFormDirty();
+		};
+
+		svc.refreshProductTestGrid = function()
+		{
+			console.log("refreshProductTestGrid");
+
+			svc.data.productTests.byGroupSum      = svc.getTestsByGroupSum(svc.data.productTests);
+			svc.data.productTests.byId            = svc.data.productTests.indexBy("globalId");
+			svc.data.productTests.byName          = svc.data.productTests.indexBy("testName");
+
+			//refresh status calculations
+			svc.refreshGroupSums();
+			svc.calculateLimitsForAllProductTests();
+			svc.calculateLimitTypesForExecutiveSummary();
+			svc.calculateSummaryOfFailures();
+			svc.data.containsBrandLimit           = svc.containsProductTestLimit("brand");
+			svc.data.containsRegulatoryLimit      = svc.containsProductTestLimit("regulatory");
+
+			//update table columns with additional columns from tests
+			Array.removeMultiple(svc.data.columns, svc.data.addedColumns);
+			svc.getUniqueProductTestColumns();
+			svc.insertColumnPosition = Array.findIndex(svc.data.columns, col => col.field == "componentName");
+			svc.data.columns.insertAll(svc.insertColumnPosition, svc.data.addedColumns);
+		};
+
+		//Product test column functions
+
+		svc.getUniqueProductTestColumns = function()
+		{
+			var columnMap = {};
+			angular.forEach(svc.data.productTests, function(test) {
+				angular.forEach(Array.filter(test.columns, "viewableOnForms"), c => columnMap[c.name] = c.name);
+				if(test.columns &amp;&amp; !test.columns.by)
+					Array.indexBy(test.columns, "name", true);
+			});
+			svc.data.uniqueColumns = Object.keys(columnMap);
+			svc.data.addedColumns = Array.map(svc.data.uniqueColumns, function(col) { return { label: col, field: ["columns", "by", "name", col, "value"], show: "auto", dynamic: true }; } );
+			console.log("getUniqueProductTestColumns", svc.data.addedColumns);
+			return svc.data.uniqueColumns;
+		};
+
+		//Group sum calculation functions
+
+		//init / refresh group sum values in form
+		svc.refreshGroupSums = function()
+		{
+			if(Array.isEmpty(svc.data.productTests) || svc.data.forceReadOnly)
+				return svc.data.productTests;
+
+			for(let i = 0; i &lt; Array.getCount(svc.data.productTests); i++)
+				if(svc.data.productTests[i] &amp;&amp; svc.data.productTests[i].isGroup)
+					svc.refreshGroupSum(svc.data.productTests[i]);
+
+			return svc.data.productTests;
+		};
+
+		svc.refreshGroupSum = function(groupSum)
+		{
+			if(!groupSum || !groupSum.groupId)
+				return;
+
+			var testGroup = svc.data.productTests &amp;&amp; svc.data.productTests.byGroupSum ? svc.data.productTests.byGroupSum[groupSum.groupId] : [];
+
+			if(Array.isNotEmpty(testGroup))
+				return groupSum.answerNum = svc.calculateGroupSum(testGroup);
+		};
+
+		svc.calculateGroupSum = function(testGroup)
+		{
+			var sum = null;
+			for(let i = 0; i &lt; Array.getCount(testGroup); i++)
+			{
+				let test = testGroup[i];
+				if(test.isExempt)
+					continue;
+
+				let isNonDetectPassBrand      = String.equals(test.brandStatus,      "non-detect pass");
+				let isNonDetectPassRegulatory = String.equals(test.regulatoryStatus, "non-detect pass");
+
+				if(!isNonDetectPassBrand &amp;&amp; !isNonDetectPassRegulatory &amp;&amp; test.answerNum &amp;&amp; !isNaN(test.answerNum))
+					sum += test.answerNum;
+			}
+
+			return sum;
+		};
+
+		svc.getTestsByGroupSum = function(productTests)
+		{
+			return Array.filter(productTests, t => !t.isGroup).groupBy("groupId");
+		};
+
+		svc.isGroupComplete = function(test)
+		{
+			if(!test || !test.groupId || Array.isEmpty(svc.data.productTests))
+				return false;
+
+			var groupSum = test.isGroup ? test : svc.groupSumInForm(test);
+			if(!groupSum)
+				return false;
+
+			var groupTests = svc.data.productTests.byGroupSum &amp;&amp; svc.data.productTests.byGroupSum[test.groupId];
+			return groupSum.nbTests == Array.getCount(groupTests);
+		};
+
+		svc.isFirstElementOfGroup = function(index)
+		{
+			let test = svc.data.productTests[index];
+			let prevTest = svc.data.productTests[index - 1];
+			let groupId     = svc.isGroupComplete(test) &amp;&amp; test.groupId;
+			let prevGroupId = prevTest &amp;&amp; svc.isGroupComplete(prevTest) &amp;&amp; prevTest.groupId;
+
+			return index > 0 &amp;&amp; (prevGroupId != groupId);
+		};
+
+		// Bulk action functions for Product Tests
+		svc.setQualitativeToPass = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(svc.isQualitative(test)) {
+					//Set Pass: find Pass limit
+					var limit = Array.find(test.limits, l => String.equals(l.exceedStatus, "Pass"));
+					test.isExempt = false;
+					test.answer = limit ? limit.message : null;
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		svc.setQualitativeToFail = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(svc.isQualitative(test)) {
+					//Set Pass: find Fail limit
+					var limit = Array.find(test.limits, l => String.equals(l.exceedStatus, "Fail"));
+					test.isExempt = false;
+					test.answer = limit ? limit.message : null;
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		svc.setQualitativeToExempt = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(svc.isQualitative(test)) {
+					test.answer = null;
+					test.isExempt = true;
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		svc.setRequiredToNonDetect = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(test.required &amp;&amp; svc.isQuantitative(test)) {
+					svc.setNonDetect(test);
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		svc.setOptionalToNonDetect = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(!test.required &amp;&amp; svc.isQuantitative(test)) {
+					svc.setNonDetect(test);
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		svc.setAllToNonDetect = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(svc.isQuantitative(test)) {
+					svc.setNonDetect(test);
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		svc.clearAllNonDetect = function()
+		{
+			angular.forEach(svc.data.productTests, function(test) {
+				if(svc.isNonDetect(test)) {
+					svc.clearNonDetect(test);
+					svc.getLimitCalculationResult(test);
+				}
+			});
+		};
+
+		//remove all tests from Product Test Results grid
+		svc.removeAllTests = function()
+		{
+			svc.productTestIdsToDelete = Array.distinct(svc.data.productTests, "containerQuestionId", true);
+			svc.data.productTests.clear();
+			svc.data.selection.clear();
+			svc.data.selectionMap = {};
+
+			svc.searchProductTests();
+			svc.refreshProductTestGrid();
+		};
+
+		//CR-1390 Enable Deleting Test: if test created by current org and not submitted, or if no restriction for current actor
+		svc.enableDeleteTest = test => !test.isGroup &amp;&amp; test.id &amp;&amp; (!svc.data.restrictTestDeletion || test.$addedBy == svc.settings.currentUbeId &amp;&amp; test.$submissionStatus != 'Submitted' || !test.$addedBy &amp;&amp; !test.$submissionStatus);
+
+		//AP-883 Add logic for “Pass Conditionally“ button visibility. Button appears when :
+		//- Logged in User has assigned Custom Setting "Allow Conditional Pass" TODO - implement custom setting
+		//- regulatory test is failing and is not linked to any certificate
+
+		//User can mark a test as Conditional Pass if the following are TRUE:
+		//test is non-regulatory
+		//test is regulatory but NOT used in any certificate (verify conditions while testing)
+
+		svc.enableConditionalPass = function(test)
+		{
+			var isConditionalPassAllowed = CommonUtils.getVar("data.program.isConditionalPassAllowed", svc, false) &amp;&amp; String.equals(svc.data.workflowActorType, "Requestor");
+			if(!test || !isConditionalPassAllowed) return isConditionalPassAllowed;
+
+			if(svc.data.isRequestClosed) return false;
+			if(test.$conditionalPass) return true;
+			return !test.isGroup &amp;&amp; svc.testIs(test, "FAIL") &amp;&amp; (Array.isEmpty(test.certificateIds) || !svc.isRegulatory(test));
+		};
+
+		svc.disableConditionalPass = test => !svc.enableConditionalPass(test);
+
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

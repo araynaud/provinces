@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: partners/app/controllers/reciprocalRelationship/reciprocalRelationship.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: partners/app/controllers/reciprocalRelationship/reciprocalRelationship.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module partners/components/reciprocalRelationship
+@description This is the reciprocalRelationship controller for reciprocalRelationship page.
+*/
+module.exports = function(ngModule)
+{
+	ngModule.controller('reciprocalRelationshipNgController', ReciprocalRelationshipNgController);
+	ReciprocalRelationshipNgController.$inject = ['$window', 'RemoteActionService', 'NavigationService'];
+	function ReciprocalRelationshipNgController  ($window,    RemoteActionService,   NavigationService )
+	{
+		var vm = this;
+		$window.reciprocalRelationshipNgController = this;
+		var relationshipUtilMapper 			= $window.relationshipUtilMapper.remoteActions;
+		vm.configSettings 					= $window.configSettings;
+		vm.receiveMessage = function(event) {
+			vm.orgDomain = event.origin;
+			vm.message = event.data;
+		};
+
+		vm.$onInit = function() {
+			vm.labels = window.labels;
+			vm.greyed = false;
+			vm.cancelButtonText = vm.labels.common.cancel;
+			vm.imageDir = $window.sf_design_system.imageDir;
+			vm.retParams = { vid: NavigationService.getParameter('vid') };
+			vm.loading = true;
+			vm.modalPartnerVisibility = false;
+			vm.createReciprocalRelationship = false;
+			vm.sendCorrectiveAction = true;
+
+			vm.selectedTradingPartnerRelationship = {};
+			vm.selectedTradingPartnerRelationship.name = vm.configSettings.tradingPartnerName;
+			vm.selectedTradingPartnerRelationship.tradingPartnerName = vm.configSettings.tradingPartnerName;
+			vm.reciprocalRequestorId 			= vm.configSettings.reciprocalRequestorId;
+			vm.reciprocalResponderId 			= vm.configSettings.reciprocalResponderId;
+			vm.taskId 							= vm.configSettings.taskId;
+			vm.result 							= vm.configSettings.errorTradingPartnerRelationship;
+			vm.carFlag = vm.configSettings.requestType === 'Corrective Action';
+			vm.taskFormResult					= vm.configSettings.taskFormResult;
+			vm.isClosed 						= vm.configSettings.isClosed;
+			vm.confirmCorrectiveAction			= vm.configSettings.confirmCorrectiveAction;
+			//vm.loadBaseData();
+			$window.addEventListener("message", vm.receiveMessage, false);
+
+			vm.closeDialogActions = [
+				{ text: vm.labels.common.yes, click: vm.approveAndSaveComment, close: true },
+				{ text: vm.labels.common.no,  click: vm.disableSendCorrectiveAction, close: true }
+			];
+		};
+
+		/////////////// call remote action on controller
+		vm.callRemoteAction = function(method, args, outputElement) {
+			return RemoteActionService.callRemoteAction(method, args, outputElement, vm);
+		};
+
+		/////////////// remote action methods
+
+		vm.loadBaseData = function(scope)
+		{
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipNonUniversalIds, 			[], "tradingPartnerRelationshipNonUniversalIds");
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipTags, 						[], "tradingPartnerRelationshipTags");
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipStatuses, 					[], "tradingPartnerRelationshipStatuses");
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipTypes, 						[], "tradingPartnerRelationshipTypes");
+			vm.callRemoteAction(relationshipUtilMapper.relationshipAttribute,									['UU Relationship'], "AttributeList");
+		};
+		/////////////// Trading Partner Relationship Details Modal Methods
+		vm.addTradingPartnerRelationshipId = function()  {
+			if(!vm.selectedTradingPartnerRelationship.nonUniversalIds) vm.selectedTradingPartnerRelationship.nonUniversalIds = [];
+			vm.selectedTradingPartnerRelationship.nonUniversalIds.push({});
+		};
+
+		vm.removeTradingPartnerRelationshipId = function(index) {
+			vm.selectedTradingPartnerRelationship.nonUniversalIds.splice(index, 1);
+		};
+
+		vm.getTradingPartnerRelationshipNonUniversalIds = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipNonUniversalIds,	[], "tradingPartnerRelationshipNonUniversalIds");
+		};
+
+		vm.getTradingPartnerRelationshipTags = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipTags, 				[], "tradingPartnerRelationshipTags");
+		};
+
+		vm.getTradingPartnerRelationshipTypes = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipTypes, 				[], "tradingPartnerRelationshipTypes");
+		};
+
+		vm.hidePartnerModal = function() {
+			vm.modalPartnerVisibility = false;
+		};
+
+		vm.showPartnerModal = function() {
+			vm.modalPartnerVisibility = true;
+		};
+
+		vm.close = function() {
+			vm.loading = true;
+			vm.hidePartnerModal();
+			vm.goToTaskList();
+		};
+
+		vm.cancel = function() {
+			vm.close();
+		};
+
+		vm.connectToPartnerShowModal = function() {
+			vm.showPartnerModal();
+			vm.selectedTradingPartnerRelationship.relationshipStatus = 'Pending';
+			if(!vm.selectedTradingPartnerRelationship.tags) vm.selectedTradingPartnerRelationship.tags = [];
+			if(vm.selectedTradingPartnerRelationship.tags.length == 0) {
+				vm.tradingPartnerRelationshipTags.forEach(function(el) {
+					vm.selectedTradingPartnerRelationship.tags.push( { label: el, value: false } );
+				});
+			}
+		};
+
+		vm.checkTradingPartnerRelationship = function() {
+			var uuRelationship = {};
+			var attributesList = [];
+			var tags = [];
+			vm.errorTradingPartnerRelationship = '';
+			if(vm.selectedTradingPartnerRelationship) {
+				tags = [];
+				if(Array.isNotEmpty(vm.selectedTradingPartnerRelationship.tags)) {
+					vm.selectedTradingPartnerRelationship.tags.forEach(function(el) {
+						if(el.value &amp;&amp; el.label &amp;&amp; !(el.label in tags))
+							tags.push(el.label);
+					});
+				}
+
+				if(Array.isNotEmpty(vm.AttributeList))
+				{
+					vm.AttributeList.forEach(function(el)
+					{
+						if((!el.type || el.type == 'Text') &amp;&amp; String.isNotEmpty(el.value)) {
+							attributesList.push({key: el.uniqueId, value: el.value});
+						}
+						else if (el.type == 'Picklist' &amp;&amp; el.value) {
+							attributesList.push({key: el.uniqueId, value: el.value.value});
+						}
+						else if (el.type == 'Multi-Picklist' &amp;&amp; Array.isNotEmpty(el.value)) {
+							el.value.forEach( function(item) {
+								attributesList.push({key: el.uniqueId, value: item.value});
+							});
+						}
+					});
+				}
+
+				if(vm.selectedTradingPartnerRelationship.IdSF)
+					uuRelationship.IdSF = vm.selectedTradingPartnerRelationship.IdSF;
+				else
+					uuRelationship.IdSF = null;
+
+				if(vm.selectedTradingPartnerRelationship.name)
+					uuRelationship.name = vm.selectedTradingPartnerRelationship.name;
+				else
+					vm.errorTradingPartnerRelationship += 'Error: Select Trading Partner Relationship Name. ';
+
+				if(vm.selectedTradingPartnerRelationship.relationshipStatus)
+					uuRelationship.relationshipStatus = vm.selectedTradingPartnerRelationship.relationshipStatus;
+				else
+					vm.errorTradingPartnerRelationship += 'Error: Select Trading Partner Relationship Status. ';
+
+				if(vm.selectedTradingPartnerRelationship.relationshipType)
+					uuRelationship.relationshipType = vm.selectedTradingPartnerRelationship.relationshipType;
+				else
+					vm.errorTradingPartnerRelationship += 'Error: Select Trading Partner Relationship Type. ';
+
+				if(vm.selectedTradingPartnerRelationship.nonUniversalIds)
+					uuRelationship.nonUniversalIds = vm.selectedTradingPartnerRelationship.nonUniversalIds;
+
+				if(vm.selectedTradingPartnerRelationship.comment)
+					uuRelationship.comment = vm.selectedTradingPartnerRelationship.comment;
+
+				uuRelationship.tags = tags;
+				uuRelationship.attributes = attributesList;
+			}
+			return uuRelationship;
+		};
+
+		vm.saveComment = function(option)
+		{
+			vm.loading = false;
+
+			if(!vm.comment)
+				vm.comment = '';
+
+			vm.result = '';
+
+			//AP-972
+			if(vm.taskFormResult == 'Fail' &amp;&amp; vm.confirmCorrectiveAction)
+				vm.toggleCloseDialog();
+			else
+				vm.approveAndSaveComment();
+		};
+
+		vm.toggleCloseDialog = function() {
+			return vm.showModalOnClose = !vm.showModalOnClose;
+		};
+
+		vm.disableSendCorrectiveAction = function() {
+			vm.sendCorrectiveAction = false;
+			vm.approveAndSaveComment();
+		};
+
+		vm.approveAndSaveComment = function() {
+			if(!vm.taskId) return;
+
+			vm.loading = true;
+			vm.callRemoteAction("approveAndSaveComment",
+				[ vm.taskId, vm.comment, vm.reciprocalRequestorId, vm.reciprocalResponderId, vm.sendCorrectiveAction ],
+				vm.getSaveCommentResult);
+		};
+
+		vm.getSaveCommentResult = function(result)
+		{
+			vm.isClosed = true;
+			if(result){
+				vm.greyed = false;
+				vm.createReciprocalRelationship = true;
+				vm.loadBaseData();
+			}
+			else {
+				vm.greyed = true;
+				vm.cancelButtonText = vm.labels.common.back;
+
+			}
+			vm.result = 'Approved successfully.';
+			if(!vm.createReciprocalRelationship)
+				return vm.goToTaskList();
+
+			return null;
+		};
+
+		vm.goToTaskList = function() {
+			NavigationService.goToPage("TaskListPage", vm.retParams);
+		};
+
+		vm.goToTask = function() {
+			NavigationService.goToObject(vm.taskId);
+		};
+
+		vm.saveRelationship = function(option) {
+			vm.result = '';
+			var uuRelationship = vm.checkTradingPartnerRelationship();
+			if( vm.errorTradingPartnerRelationship == ''){
+				vm.callRemoteAction("createNewUbeRelationship", [ uuRelationship, vm.reciprocalRequestorId, vm.reciprocalResponderId ], vm.getResult);
+				vm.hidePartnerModal();
+			}
+		};
+
+		vm.getResult = function(result){
+			vm.result = result;
+			if(vm.result.search('Error') &lt; 0){
+				vm.selectedTradingPartnerRelationship = {};
+				vm.createReciprocalRelationship = false;
+				//DE8412
+				vm.goToTaskList();
+			}
+			return vm.result;
+		};
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

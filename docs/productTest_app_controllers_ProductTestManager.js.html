@@ -1,0 +1,2594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: productTest/app/controllers/ProductTestManager.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: productTest/app/controllers/ProductTestManager.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module productTest/components/ProductTestManager
+@description This is the ProductTestManager controller for ProductTestManager page.
+*/
+
+module.exports = function(ngModule)
+{
+	ngModule.controller("ProductTestManager", PageController);
+	PageController.$inject = ['$scope', '$log', '$timeout', '$state', 'CommonUtils', 'RemoteActionService', 'ToastService', 'NavigationService'];
+	function PageController  ( $scope,   $log,   $timeout,   $state,   CommonUtils,   RemoteActionService,   ToastService,   NavigationService )
+	{
+		$log.info("ProductTestManager", $state.current);
+		var ptm = this;
+		window.ptm = ptm;
+
+		const listSize = 20; 
+		const maxListLimit = 15000;
+
+		const validationMessages = {
+			noTestingProgram:	"Testing Program name is required.",
+			noCategoryName: "Category Test name is required.",
+			categorySaved:	"Test Category saved.",
+			noProductTests:	"Please add Product Tests to this Test Category.",
+			noLimits:	"Please enter Test Limits for all Product Tests.",
+			productTestIncomplete: "Please enter Test Class and Test Name for all Product Tests.",
+			limitsQuantitative:	"Please enter Operator, Value, Measure and Message for all Limits.",
+			limitsQualitative:	"Please enter Value and Message for all Limits.",
+			limitsAddTesting: "Please specify Additional Testing Class for the limits that require one.",
+			limitsAddTestingClass: "Please specify a valid Additional Testing Class for the limits that require one.",
+			duplicateLimits:	"Please check duplicate Values or Messages in Test Limits.",
+			noAvailableTests:	"There are no tests to be selected.",
+			enterNameForSumTest: "Enter a name for the group test.",
+			groupShouldHaveLimits: "All summary group tests must have limits.",
+			groupShouldHaveTest: "All summary group tests must have at least one test assigned.",
+			noSelectedLab:	"Please select at least one Approved Lab",
+			uploadImageHelp:	"Logos and signatures are referenced from your ICIX Document Library."
+		};
+
+		const periods = { 0: "No expiration", 30: "Monthly", 90: "Quarterly", 180: "Semi-Annually", 365: "Annually" };
+		const additionalTestingOption = "Additional Testing Needed";
+
+		// =========  Initialize controller =========
+		ptm.init = function()
+		{
+			ptm.internalContacts = null;
+			ptm.contacts = [];
+			ptm.tempAddedItems = [];
+			ptm.disableSave = false;
+			ptm.cancelButtonText = 'Cancel';
+			ptm.listLimitsToDelete = [];
+			ptm.stencilImage = true;
+			ptm.selectedTestGroup = null;
+			ptm.classAndTestNames = [];
+			ptm.filteredTests = [];
+			ptm.confirmDelete = false;
+			ptm.confirmationDialogVisibility = false;
+			ptm.informationDialogMessage = '';
+			ptm.cloneStatus = '';
+			ptm.noTestingProgramsMessage = 'No Testing Programs found.';
+			ptm.noCategoriesMessage = 'No Test Categories found.';
+			ptm.confirmationDialogMessage = 'Are you sure you want to delete this record?';
+			ptm.title = {
+				home: "Testing Programs",
+				program: "Testing Program",
+				editCategory: "Edit Product Test Category",
+				addCategory: "New Product Test Category"
+			};
+			ptm.resultsPerPage = listSize;
+			ptm.isEmpty = Array.isEmpty;
+			ptm.currentState = $state.current.name;
+			ptm.uploadImageHelp	= validationMessages.uploadImageHelp;
+			ptm.templatePages = window.certificateEditorMapper.templatePages;
+			ptm.previewUrl = NavigationService.contentVersionPreviewUrl;
+			ptm.disableButtonPrevious = true;
+			ptm.disableButtonNext = false;
+			ptm.showPagination = false;
+
+			//AP-18
+			ptm.auxPicklists = window.ruleBuilderMapper.picklists;
+
+			ptm.testsInUse = [];
+			ptm.userAllowed = CommonUtils.getVar("configSettings.isUserAllowed");
+
+			ptm.picklists  = CommonUtils.getVar("configSettings.picklists", window, {});
+
+			ptm.picklists.units = [
+				"%", "%/cell", "°C", "°F", "dB",
+				"as/kg", "Bq/kg",
+				"m",  "dm",  "cm",  "mm", "in", "in/s",
+				"m2", "dm2", "cm2", "mm2",
+				"m3", "cm3", "mm3", "ml", "L",
+				"kg", "g", "mg", "µg", "lbf", "lbs",
+				"g/kg", "g/L", "g/m2", "g/ml", "IA",
+				"CFU", "CFU/g (CFU/ml)", "CFU/100ml",
+				"Joules", "Joules/cm2",
+				"mg Cd/kg", "mg lead/kg", "mg Pb/kg", "mg/item",
+				"mg/m2/h", "mg/100g", "mg/cell", "mg/dm2", "mg/g", "mg/kg", "mg/L", "mg/m3", "ml/m3",
+				"mg of each listed substance per litre of the aqueous simulant.",
+				"µg/100ml", "µg/cm2", "μg/cm2/week", "µg/dm2", "µg/m2", "µg/m3", "μg/m3 in 48h",
+				"MPN/g", "N", "ohm/cm",
+				"pH units", "ppb", "ppm", "psi",
+				"seconds", "minutes", "hours",
+				"N/A" ];
+
+			ptm.picklists.validationPeriods = [];
+			if(!ptm.picklists.validation_periods)
+				ptm.picklists.validation_periods = [];
+			if(!ptm.picklists.validation_periods.includes("0"))
+				ptm.picklists.validation_periods.unshift("0");
+
+			for(var i = 0; i &lt; Array.getLength(ptm.picklists.validation_periods); i++)
+			{
+				var duration = ptm.picklists.validation_periods[i];
+				var label = "Every " + duration + " days";
+				if(duration in periods)
+					label = periods[duration];
+				else if(duration > 365)
+					label = "Every " + Math.round(duration / 365) + " years";
+				else if(duration > 30)
+					label = "Every " + Math.round(duration / 30) + " months";
+
+				ptm.picklists.validationPeriods.push({ key: duration, value: label });
+			}
+
+			ptm.picklists.daysRetest = [
+				{ key: "0", value: "Do not retest" },
+				{ key: "1", value: "Always retest" },
+				{ key: "2", value: "Only retest if product renews" }
+			];
+
+			ptm.steps = [
+				{ title: "Edit Test Program", click: ptm.openCreateProgramDialogStep1},
+				{ title: "Select testing frequency", click: ptm.openCreateProgramDialogStep2},
+				{ title: "Select Approved Labs", click: ptm.openCreateProgramDialogStep3}
+			];
+
+			ptm.picklists.daysPriorRetest = [ { key: "0", value: "0 Days"} ];
+			if(Array.isEmpty(ptm.picklists.retest_periods))
+				ptm.picklists.retest_periods = [7, 14, 30, 60, 90];
+
+			for(var i = 0; i &lt; Array.getLength(ptm.picklists.retest_periods); i++) {
+				ptm.picklists.daysPriorRetest.push({ key: ptm.picklists.retest_periods[i], value: ptm.picklists.retest_periods[i] + " Days" });
+			}
+			ptm.picklists.daysPriorRetest.push({ key: "custom", value: "Custom" });
+
+			ptm.picklists.limitType.remove("Lab").sort();
+			ptm.limitType = ptm.picklists.limitType[0];
+			ptm.tabIndex = 0;
+			ptm.validateLimits = false;
+
+			ptm.certificateTypes = [];
+			ptm.testingPrograms = [];
+			ptm.addedClasses = [];
+
+			ptm.isDisabled = false;
+			//DE8401
+			ptm.hideDateErrors = false;
+
+			// Preferred Labs settings
+			ptm.availableList			= [];
+			ptm.selectedList			= [];
+			ptm.editTestingProgramId	= null; //To Do: in case edit Product Test, set editobject-id parameter of the multi-select component
+			// End Preferred Labs settings
+
+			// flags for showing error toasts
+			ptm.errorTestToast = false;
+
+			ptm.deleteProductTestIds 	= [];
+			ptm.deleteGroupTestIds 		= [];
+
+			ptm.emptyProductTest = { testingType: 'Quantitative', required: false, active: true, version: 1, $added: true };
+			ptm.emptyGroup = { name: '', limits: [], $includedTests: [] };
+
+			// initialize dialog titles
+			ptm.testTitle = '';
+			ptm.groupTitle = '';
+			ptm.viewableTrue = true;
+			ptm.showDays = false;
+			ptm.showCustomdays = false;
+			ptm.categoryRules = [];
+			ptm.allProductTests = [];
+			ptm.filters = {};
+
+			// init clone batch status params
+			ptm.showBatchStatusToast = false;
+			ptm.batchMessage = 'Cloning testing program...';
+			ptm.cloneSuccessMessage = 'Testing Program Cloned successfully.';
+			ptm.cloneErrorMessage = 'Error cloning testing program.';
+
+			ptm.addedProductTests = [];
+
+			ptm.totalRecords = 0;
+			ptm.offset = 0;
+			ptm.totalPages = 0;
+			ptm.currentPage = 1;
+			ptm.initUI();
+			ptm.loadData();
+		};
+		//end ptm.init
+
+		//initialize UI components: modal dialogs, table columns, action menus, etc.
+		ptm.initUI = function()
+		{
+			//initialize modal dialogs
+			ptm.createProgramDialog =
+			{
+				//fields: "name",
+				open: ptm.openCreateProgramDialog,
+				actions: [
+					{ text: "Next",   click: ptm.hasTestingProgramName, close: false }
+				]
+			};
+
+			ptm.createProgramDialogStep2 =
+			{
+				open: ptm.openCreateProgramDialogStep2,
+				actions: [
+					{ text: "Previous",   click: ptm.openCreateProgramDialogStep1, close: true },
+					{ text: "Next", click: ptm.openCreateProgramDialogStep3, close: true }
+				]
+			};
+
+			ptm.createProgramDialogStep3 =
+			{
+				open: ptm.openCreateProgramDialogStep3,
+				actions: [
+					{ text: "Previous",   click: ptm.openCreateProgramDialogStep2, close: true },
+					{ text: "Save", click: ptm.createTestingProgram, close: false, disable: () => ptm.loading || Array.isNotEmpty(ptm.availableList) &amp;&amp; Array.isEmpty(ptm.selectedList) }
+				]
+			};
+
+			ptm.editCertificateDialog = {
+				open: ptm.openEditCertificateDialog,
+				actions: [
+					{text: "Back", click: ptm.openCreateProgramDialogStep1, close: true},
+					{text: "Save", click: ptm.saveCertificate, close: false, showLoader: () => ptm.savingCertificate }
+				]
+			};
+
+			ptm.breadcrumbs = {
+				categories: [
+					{ text: "Product Test Manager", click: ptm.goToTop },
+					{ text: () => CommonUtils.getVar("testingProgram.name", ptm) }
+				],
+
+				category: [
+					{ text: "Product Test Manager", click: ptm.goToTop },
+					{ text: () => CommonUtils.getVar("category.programName", ptm) || CommonUtils.getVar("testingProgram.name", ptm), click: ptm.goToProgram },
+					{ text: () => CommonUtils.getVar("category.name", ptm) }
+				]
+			};
+
+			ptm.deleteTestingProgramDialog = {
+				actions: [
+					{ text: "No", close: true },
+					{ text: "Yes", click: ptm.deleteTestingProgram, close: true }]
+			};
+
+			ptm.deleteTestingCategoryDialog = {
+				actions: [
+					{ text: "No", close: true },
+					{ text: "Yes", click: ptm.deleteTestingCategory, close: true }]
+			};
+
+			ptm.deleteProductTestDialog = {
+				visible: false,
+				actions: [
+					{ text: "No", close: true },
+					{ text: "Yes", click: ptm.deleteProductTest, close: true }
+				],
+				open: ptm.deleteProductTestDialogOpen
+			};
+
+			ptm.deleteGroupSummationDialog = {
+				visible: false,
+				actions: [
+					{ text: "No", close: true },
+					{ text: "Yes", click: ptm.deleteGroupSummation, close: true }
+				],
+				open: ptm.deleteGroupSummationDialogOpen
+			};
+
+			ptm.deactivateProductTestDialog = {
+				visible: false,
+				actions: [
+					{ text: "No", close: true },
+					{ text: "Yes", click: ptm.deactivateProductTest, close: true }
+				],
+				open: ptm.deactivateProductTestDialogOpen
+			};
+
+			// Product Test table dialogs
+			ptm.limitDialog = {
+				open:	ptm.openLimits,
+				close: ptm.cancelLimits,
+				actions: [{ text: "OK", click: ptm.saveLimits, close: false }]
+			};
+
+			ptm.ptAttributeDialog = {
+				open:	ptm.openAttributeDialog,
+				close:  ptm.closeAttributeDialog,
+				actions: [{ text: "OK", close: true, click: ptm.removeEmptyAttributes }]
+			};
+
+			ptm.rulesDialog = {
+				visible: false,
+				open:	ptm.openExceptionRules,
+				columns: []
+			};
+
+			ptm.notesDialog = {
+				fields: [ { field: "notes", label: "Notes", type: "long text", maxLength: 5000, readOnly: () => ptm.testingProgram &amp;&amp; ptm.testingProgram.requestAssociated &amp;&amp; !ptm.addedProductTest } ],
+				open:	ptm.openNotes,
+				close: ptm.cancelNotes,
+				actions: [{ text: "OK", click: ptm.saveNotes, close: true, show: () => ptm.testingProgram &amp;&amp; !ptm.testingProgram.requestAssociated || ptm.addedProductTest }]
+			};
+
+			// Group summation table dialogs
+			ptm.testsDialog = {
+				close: ptm.cancelGroupTests,
+				actions: [
+					{ text: "Add", click: ptm.saveGroupTests, close: true }
+				]
+			};
+
+			ptm.summationLimitDialog = {
+				open:	ptm.openSummationLimits,
+				close: ptm.cancelLimits,
+				actions: [{ text: "Add", click: ptm.saveLimits, close: false }]
+			};
+
+			//initialize table columns
+			ptm.columns = {
+				testingProgram: [
+					{ field: "name", label: "Testing Program Name", sortable: true, click: ptm.goToProgram },
+					{ field: "active", label: "Active", type: "checkbox", sortable: true, change: ptm.setActive, readOnly: ptm.disableChecks },
+					{ field: "requestAssociated", label: "In Use", align: "center", sortable: true },
+					{ field: "createdDate", sortable: true },
+					{ field: "lastModifiedDate", sortable: true },
+					{ label: "Certificates", value: tp => tp.certificateNames.join(" / ") }
+				],
+
+				testCategory: [
+					{ field: "name", label: "Test Category Name", sortable: true, click: ptm.goToCategory },
+					{ field: "createdDate", sortable: true},
+					{ field: "modifiedDate", sortable: true}
+				],
+
+				groupSummation: [
+					{ field: "name", label: "Test Summary Name", type: "text" },
+					{ field: "$includedTests.length", label: "Included Tests", defaultValue: "0", align: "center",
+						click: ptm.openTestsDialog,
+						popover: ptm.getGroupSumText
+					},
+					{ field: "limits", label: "Limits", type: "icon", icon: "custom97", iconFile: "custom", color: "#666", align: "center",
+						click: ptm.summationLimitDialog.open,
+						popover: ptm.getLimitsText,
+						style: function(pt) { if(pt &amp;&amp; Array.isEmpty(pt.limits)) return {opacity: 0.5 }; }
+					},
+					{ field: "notes",  label: "Notes",  type: "icon", icon: "note",   iconFile: "standard", color: "#666", align: "center",
+						click: ptm.notesDialog.open,
+						popover: ptm.getNotes,
+						style: function(pt) { if(pt &amp;&amp; !pt.notes) return {opacity: 0.5}; }
+					}
+				],
+
+				productTest: [
+					{ field: "classId", label: "Test Class", type: "lookup", searchAction: "getTestClasses", initAction: "getTestClass", loadColumnAction: "loadAllTestClasses", modelField: "id", classes: "product-test-lookup-column", readOnly: ptm.isProductTestReadOnly },
+					{ field: "testId", label: "Test Name",  type: "lookup", searchAction: "getTests",       initAction: "getTest",      loadColumnAction: "loadAllTests", modelField: "id", icon: "custom97", iconFile: "custom", classes: "product-test-lookup-column",
+						exclude: ptm.testsInUse, excludeSelection: true, readOnly: ptm.isProductTestReadOnly
+					},
+					// initialize additional columns (US11440)
+					{ field: "addCol0", type: "text", show: false, viewableOnForms: true, classes: "additional-column", readOnly: ptm.isProductTestReadOnly },
+					{ field: "addCol1", type: "text", show: false, viewableOnForms: true, classes: "additional-column", readOnly: ptm.isProductTestReadOnly },
+					{ field: "addCol2", type: "text", show: false, viewableOnForms: true, classes: "additional-column", readOnly: ptm.isProductTestReadOnly },
+					{ field: "addCol3", type: "text", show: false, viewableOnForms: true, classes: "additional-column", readOnly: ptm.isProductTestReadOnly },
+					{ field: "addCol4", type: "text", show: false, viewableOnForms: true, classes: "additional-column", readOnly: ptm.isProductTestReadOnly },
+					{ field: "testingType", label: "Test type",  type: "picklist", options: ptm.picklists.testingType.reverse(), defaultValue: "Quantitative", readOnly: ptm.isProductTestReadOnly },
+					{ field: "method", label: "Test Method", type: "long text", maxLength: 131000, readOnly: ptm.isProductTestReadOnly },
+					{ field: "certificates", label: "Show on Certificates", type: "multi-picklist", minLength: 0, modelField: "Id", modelJoin: ";", show: false, watchOptions: "true", options: [], readOnly: ptm.isProductTestReadOnly },
+					{ field: "startDate", label: "Start Date", type: "date", dateFormat: "MM/DD/YYYY", modelFormat: "YYYY-MM-DD", sortable: true, readOnly: ptm.isDateReadOnly},
+					{ field: "endDate", label: "End Date", type: "date", dateFormat: "MM/DD/YYYY", modelFormat: "YYYY-MM-DD", sortable: true, readOnly: ptm.isDateReadOnly},
+
+					{ field: "attributes", label: "Attr.", title: "Attributes", click: ptm.openAttributeDialog, type: "icon", icon: "record", iconFile: "standard", color: "#666", align: "center",
+						popover: ptm.getAttributesText,
+						style: function(pt) { if(pt &amp;&amp; Array.isEmpty(pt.attributes)) return { opacity: 0.5}; }
+					},
+					{ field: "rules", type: "icon", icon: "task", iconFile: "utility", iconSize: "28px", color: "#666",
+						click: ptm.rulesDialog.open,
+						popover: ptm.getRulesText,
+						style: function(pt) { if(pt &amp;&amp; Array.isEmpty(pt.exceptionRules)) return { opacity: 0.5}; }
+					},
+					{ field: "limits", type: "icon", icon: "custom97", iconFile: "custom", color: "#666",
+						click: ptm.limitDialog.open,
+						popover: ptm.getLimitsText,
+						style: function(pt) { if(pt &amp;&amp; Array.isEmpty(pt.limits)) return {opacity: 0.5 }; }
+					},
+					{ field: "notes", type: "icon", icon: "note",   iconFile: "standard", color: "#666",
+						click: ptm.notesDialog.open,
+						popover: ptm.getNotes,
+						style: function(pt) { if(pt &amp;&amp; !pt.notes) return {opacity: 0.5}; }
+					},
+					{ field: "required", label: "Required", type: "checkbox", class: "checkbox", defaultValue: false, readOnly: ptm.testingProgram &amp;&amp; ptm.testingProgram.requestAssociated &amp;&amp; !ptm.userAllowed},
+					{ field: "active", label: "Active", type: "checkbox", sortable: true, defaultValue: true, readOnly: true },
+					{ field: "version", label: "Version", type: "number", sortable: true, defaultValue: 1, readOnly: true, align: "center" }
+				],
+
+				ptAttributes: [
+					{ field: "attributeId", label: "Attribute", type: "picklist", change: ptm.onAttributeChange },
+					{ field: "value",    label: "Value", type: "picklist", blankOption: "Please Select", placeholder: "Enter value" }
+				],
+
+				groupTests: [
+					{ field: "$selected", label: "Selected", type: "checkbox", change: ptm.selectTest},
+					{ field: "name", label: "Name", type: "text", readOnly: true }
+				],
+
+				productTestLimit:
+				{
+					Quantitative: [
+						{ field: "operator", label: "Operator", type: "picklist", options: ptm.picklists.limitOperator },
+						{ field: "testLimit", label: "Value", type: "number", min: 0 },
+						{ field: "unit",  label: "Measure", type: "picklist", options: ptm.picklists.units, blankOption: "None", change: ptm.copyUnits },
+						{ defaultValue: "is" },
+						{ field: "exceedStatus", label: "Message", type: "picklist", options: ptm.picklists.limitStatus, change: ptm.resetAddTesting },
+						{ field: "addTestClassId", label: "Additional Testing", type: "picklist", options: ptm.addedClasses, blankOption: "None", defaultValue: "",
+							disabled: limit => limit.exceedStatus != additionalTestingOption
+						}
+					],
+					Qualitative: [
+						{ field: "limitMessage", label: "Value", type: "text" },
+						{ defaultValue: "is" },
+						{ field: "exceedStatus", label: "Message", type: "picklist", options: ptm.picklists.limitStatus, change: ptm.resetAddTesting },
+						{ field: "addTestClassId", label: "Additional Testing", type: "picklist", options: ptm.addedClasses, blankOption: "None", defaultValue: "",
+							disabled: limit => limit.exceedStatus != additionalTestingOption
+						}
+					]
+				},
+
+				certificate: [
+					{ field: "$selected", label: "Select", type: "checkbox", style: { minWidth: "80px"}, sortable: true, change: ptm.storeTestingProgramCertificateSelection },
+					{ field: "name",  label: "Certificate Name", sortable: true},
+					{ field: "useInFilename", label: "Use In Filename", sortable: true},
+					{ field: "title", label: "Certificate Title", sortable: true},
+					{ field: "templatePage", label: "Template Page", title: cert => "Preview " + cert.templatePage, sortable: true, click: ptm.previewCertificate },
+					{ type: "button", icon: "edit",    svg: "utility", title: "Edit",    buttonClasses: "slds-button--brand small-button",   align: "center", click: ptm.editCertificateDialog.open },
+					//{ type: "button", icon: "preview", svg: "utility", title: cert => "Preview " + cert.templatePage, buttonClasses: "slds-button--neutral small-button", align: "center", click: ptm.previewCertificate },
+					{ type: "button", icon: "delete",  svg: "utility", title: "Delete",  buttonClasses: "slds-button--neutral small-button", align: "center", click: ptm.deleteCertificate, hideButton: cert => cert.used }
+				],
+
+				contact: [
+					{ field: "Contact", type: "picklist", options: ptm.internalContacts, modelField: "*", blankOption: "Default (Internal Account)" },
+					{ label: "Mailing Address", value: ptm.formatContact },
+					{ type: "button", icon: "edit", svg: "utility", title: "Edit", buttonClasses: "slds-button--brand small-button", align: "center", click: ptm.goToContact }
+				]
+			};
+
+			// add summation limit columns (without Additional Testing Column)
+			ptm.columns.summationLimit = angular.copy(ptm.columns.productTestLimit.Quantitative).filter(col => col.field != "addTestClassId");
+			ptm.picklists.limitStatusSummation = ptm.picklists.limitStatus.filter(status => status != additionalTestingOption);
+
+			angular.forEach(ptm.columns.summationLimit, function(col) {
+				if(col.field == "exceedStatus")
+					col.options = ptm.picklists.limitStatusSummation;
+			});
+
+			ptm.unitColumn = ptm.columns.productTestLimit.Quantitative.find(col => col.field == "unit");
+			ptm.certificateTypeColumn = ptm.columns.productTest.find(col => col.field == "certificates");
+			ptm.selectAllCertificates = false;
+
+			//initialize action buttons / menus
+			ptm.headerActions = {
+				testingPrograms: [{ text: "New Testing Program", click: ptm.openCreateProgramDialog }],
+				categories: [{ text: "New Test Category",   click: () => $state.go("addCategory", {programId: ptm.programId}), disable: () => (ptm.testingProgram &amp;&amp; ptm.testingProgram.requestAssociated &amp;&amp; !ptm.userAllowed) }]
+			};
+
+			ptm.ptActions = [
+				{ text: "Edit", click: ptm.openCreateProgramDialog },
+				{ text: "Details", click: ptm.goToObject },
+				{ text: "Clone", click: ptm.cloneTestingProgram },
+				{ text: "Delete", click: ptm.deleteConfirmationDialog }
+			];
+
+			ptm.ptCategoryActions = [
+				{ text: "Details", click: ptm.goToObject },
+				{ text: "Delete", click: ptm.deleteConfirmationDialog }
+			];
+
+			ptm.ptGroupSummationActions = [
+				{ text: "Add Tests", click: ptm.openTestsDialog },
+				{ text: "Add Limits", click: ptm.openSummationLimits },
+				{ text: "Add Notes", click: ptm.notesDialog.open },
+				// { text: "Clone", click: ptm.clone },
+				{ text: "Details", click: ptm.goToObject },
+				{ text: "Delete", click: ptm.deleteGroupSummationDialog.open }
+			];
+
+			// No actions for product test category actions
+			ptm.ptTestCategoryActions = [
+				{ text: "Set Exceptions", click: ptm.rulesDialog.open },
+				{ text: "Add Limits", click: ptm.limitDialog.open },
+				{ text: "Add Notes", click: ptm.notesDialog.open },
+				{ text: "Details", click: ptm.goToObject },
+				{ text: "Delete", click: ptm.deleteProductTestDialog.open },
+				{ text: "Deactivate", click: ptm.deactivateProductTestDialog.open },
+				{ text: "New version", click: ptm.newProductTestVersion }
+			];
+		};
+
+		ptm.searchTestingProgramFilter = row => !row || String.isEmpty(ptm.searchText) || String.includes(row.name, ptm.searchText) || String.includes(row.certificateNames, ptm.searchText);
+
+		ptm.cloneTestingProgram = function(row)
+		{
+			if(!row) return;
+
+			RemoteActionService.callRemoteAction("copyTestProgramWithRelatedDataAsync", [row.id], function(result) {
+				ptm.batchId = result;
+				ptm.showBatchStatusToast = true;
+			}, ptm);
+		};
+
+		ptm.goBackToTestingProgram = function()
+		{
+			ToastService.toast("Testing Program Cloned successfully.", "success");
+		};
+		
+		ptm.loadAddedClasses = function()
+		{
+			// load picklist with added test classes for the category
+			ptm.addedClasses = [];
+			//console.log(ptm.category.productTests);
+			var key = {};
+
+			angular.forEach(ptm.category.productTests, function(test)
+			{
+				// check if not already added
+				if(!test.classId || key[test.classId]) return;
+
+				// get test by Id
+				key[test.classId] = test.classId;
+				if(test.className)
+					ptm.addedClasses.push({id: test.classId, name: test.className});
+				else
+					RemoteActionService.callRemoteAction("getTestClass", test.classId, function(response) {
+						ptm.addedClasses.push({id: test.classId, name: response.name});
+					});
+			});
+
+			// Reload column options
+			ptm.columns.productTestLimit.Quantitative[ptm.columns.productTestLimit.Quantitative.length - 1].options = ptm.addedClasses;
+			ptm.columns.productTestLimit.Qualitative[ptm.columns.productTestLimit.Qualitative.length - 1].options = ptm.addedClasses;
+		};
+
+		//Load data required for current page state
+		ptm.loadData = function()
+		{
+			ptm.programId = $state.params.programId;
+			if(ptm.programId)
+				RemoteActionService.callRemoteAction("getTestingProgram", ptm.programId, "testingProgram", ptm).then(ptm.checkAssociatedRequest);
+
+			ptm.categoryId = $state.params.categoryId;
+
+			switch(ptm.currentState)
+			{
+			case "program":
+				//load list of test categories for this program
+				RemoteActionService.callRemoteAction("getTestCategories", ptm.programId, "categories", ptm);
+				break;
+
+			case "editCategory":
+				//load category with its product tests and their limits
+				ptm.stencilCategory = true;
+				RemoteActionService.callRemoteAction("getTestCategory", [ptm.categoryId, 2,listSize], function(response)
+				{
+					ptm.stencilCategory = false;
+					ptm.category = response;
+					if(ptm.category) {
+						RemoteActionService.callRemoteAction("getTestingProgram", ptm.category.programId, "testingProgram", ptm).then(ptm.checkAssociatedRequest);
+						RemoteActionService.callRemoteAction("getTestingProgramCertificates", [ptm.category.programId], ptm.setCertificateTypeOptions);
+					}
+
+					ptm.allProductTests = ptm.category.productTests;
+					if(Array.isEmpty(ptm.category.productTests)) {
+						ptm.loadEmptyProductTest();
+						ptm.filteredTests = ptm.category.productTests;
+						ptm.loadEmptyGroup();
+					}
+					else {
+						ptm.loadGroupsData();
+						if(Array.isEmpty(ptm.category.testGroups))
+							ptm.loadEmptyGroup();
+					}
+
+					// load additional columns (took from first product test, all have the same columns)
+					ptm.loadAdditionalColumns(ptm.category.productTests[0]);
+
+					// load added classes for additional testing in limits
+					ptm.loadAddedClasses();
+				});
+
+				RemoteActionService.callRemoteAction("getProductTestsTotal", [ptm.categoryId], function(result) {
+					ptm.totalRecords = result;
+					ptm.totalPages = Math.ceil(ptm.totalRecords / listSize); 
+					if(ptm.totalPages > 1){
+						ptm.showPagination = true;
+					}
+				});
+
+				ptm.loadAttributes();
+				RemoteActionService.callRemoteAction("loadCategoryRules", [ptm.categoryId], "categoryRules", ptm);
+				break;
+
+			case "addCategory":
+				ptm.category = {name: "New Test Category " + ptm.getDateTime(), programId: ptm.programId, productTests: [], testGroups: []};
+				ptm.stencilCategory = true;
+
+				if(ptm.category)
+					RemoteActionService.callRemoteAction("getTestingProgramCertificates", [ptm.category.programId], ptm.setCertificateTypeOptions);
+
+				ptm.loadAttributes();
+				ptm.loadEmptyGroup();
+				$timeout(function(){angular.element(document.querySelectorAll('#edit_category_name')).focus(); ptm.stencilCategory = false;}, 200);
+				$timeout(function(){ptm.stencilCategory = false;}, 500);
+				break;
+
+			default:
+				//home = testing program list
+				if(window.testingProgramsJson)
+					ptm.onGetTestingPrograms(window.testingProgramsJson);
+				else
+					RemoteActionService.callRemoteAction("getTestingPrograms", [], ptm.onGetTestingPrograms, ptm);
+			}
+		};
+
+		ptm.loadPagination = function(showMore)
+		{
+			if(ptm.currentPage &lt;= ptm.totalPages){
+				productTestTable.loading = true;
+				ptm.disableButtonPrevious = true;
+				ptm.disableButtonNext = true;
+				let previousId = (showMore) ? ptm.category.productTests[ptm.category.productTests.length - 1].id : ptm.category.productTests[0].id;
+				RemoteActionService.callRemoteAction("getTestCategoryForPagination", [ptm.categoryId, 2, showMore, previousId,listSize], function(result){
+					ptm.category.productTests = result.productTests;
+					productTestTable.loading = false;
+					ptm.currentPage = (showMore &amp;&amp; (ptm.currentPage &lt; ptm.totalPages)) ? ptm.currentPage + 1 : (!showMore &amp;&amp; (ptm.currentPage > 1) ? ptm.currentPage - 1 : ptm.currentPage);
+					ptm.disableButtonPrevious = ptm.currentPage &lt;= 1;
+					console.log(ptm.disableButtonPrevious);
+					ptm.disableButtonNext = ptm.currentPage == ptm.totalPages;
+				});
+			}
+		};
+
+		ptm.setCertificateTypeOptions = function(result)
+		{
+			//if no certificate types available: do not show this column
+			if(Array.isEmpty(result))
+				return ptm.certificateTypeColumn.show = false;
+
+			//select all certificates by default
+			ptm.certificateTypeColumn.show = true;
+			ptm.certificateTypeColumn.options = result;
+			ptm.certificateTypeColumn.defaultValue = Array.distinct(result, "Id").join(";");
+
+			if(Array.isEmpty(ptm.category.productTests)) {
+				ptm.loadEmptyProductTest();
+				ptm.filteredTests = ptm.category.productTests;
+			}
+		};
+
+		//select / deselect all certificate types for all product tests
+		ptm.toggleCertificateSelection = function()
+		{
+			if(!ptm.category || !ptm.category.productTests || !ptm.certificateTypeColumn.show) return;
+
+			ptm.selectAllCertificates = !ptm.selectAllCertificates;
+			angular.forEach(ptm.category.productTests, pt => pt.certificates = ptm.selectAllCertificates ? ptm.certificateTypeColumn.defaultValue : "");
+			return ptm.selectAllCertificates;
+		};
+
+		ptm.generateUniqueProductTestId = function(){
+			return 'pt' + Date.now();
+		};
+
+		ptm.generateUniqueGroupId = function(){
+			return 'gr' + Date.now();
+		};
+
+		ptm.loadEmptyGroup = function () {
+			// initialize empty group in group summation table
+			var newEmptyGroup = angular.copy(ptm.emptyGroup);
+			newEmptyGroup.key = ptm.generateUniqueGroupId();
+			ptm.category.testGroups.push(newEmptyGroup);
+		};
+
+		ptm.addEmptyGroupRow = function(grRow){
+			grRow.name 			= ptm.emptyGroup.name;
+			grRow.limits 		= ptm.emptyGroup.limits;
+			grRow.$includedTests = ptm.emptyGroup.$includedTests;
+			grRow.key 			= ptm.generateUniqueGroupId();
+		};
+
+		ptm.loadEmptyProductTest = function(){
+			// initialize empty productTest in product tests table
+			var newProductTest = angular.copy(ptm.emptyProductTest);
+			newProductTest.key = ptm.generateUniqueProductTestId();
+			newProductTest.certificates = ptm.certificateTypeColumn.defaultValue;
+			ptm.category.productTests.push(newProductTest);
+		};
+
+		ptm.addEmptyProductTestRow = function(ptRow){
+			ptRow.key = ptm.generateUniqueProductTestId();
+		};
+
+		ptm.loadGroupsData = function()
+		{
+			ptm.getTestAndTestClassName(ptm.loadTestClassesAndTestNames);
+			angular.forEach(ptm.allProductTests, function(pt)
+			{
+				angular.forEach(ptm.category.testGroups, function(gr)
+				{
+					if(!gr.$includedTests) gr.$includedTests = [];
+
+					if(pt.productTestGroup === gr.id){
+						gr.$includedTests.push(pt);
+						pt.groupKey = gr.key;
+					}
+				});
+			});
+		};
+
+		ptm.loadAdditionalColumns = function(pt)
+		{
+			angular.forEach(pt.columns, function(item, index){
+				ptm.columns.productTest[index + 2].label = item.name;
+				ptm.columns.productTest[index + 2].show = true;
+				ptm.columns.productTest[index + 2].viewableOnForms = item.viewableOnForms;
+			});
+		};
+
+		ptm.onGetTestingPrograms = function(data)
+		{
+			ptm.testingPrograms = data;
+			ptm.stencilImage = false;
+		};
+
+		ptm.onGetProductTests = function(data)
+		{
+			ptm.productTests = data;
+		};
+
+		ptm.getColumns = function(data)
+		{
+			if(Array.isEmpty(data)) return [];
+			if(angular.isArray(data)) data = data[0];
+			var columns = Object.keys(data);
+			//columns.remove("Id"); //hide Id
+			return columns;
+		};
+
+		//return to top level screen / home / testing program list
+		ptm.goToTop = function()
+		{
+			$state.go("home");
+		};
+
+		ptm.goToProgram  = function(row)
+		{
+			var pid = row &amp;&amp; row.id || row || ptm.category &amp;&amp; ptm.category.programId;
+			if(pid)
+				$state.go("program", { programId: pid });
+		};
+
+		ptm.goToCategory  = function(row)
+		{
+			var cid = row &amp;&amp; row.id || row || ptm.categoryId;
+			if(cid)
+				$state.go("editCategory", { categoryId: cid });
+		};
+
+		//AP-229
+
+		ptm.checkAssociatedRequest = function()
+		{
+			if(ptm.testingProgram &amp;&amp; ptm.testingProgram.requestAssociated &amp;&amp; !ptm.userAllowed)
+				ToastService.toast("This Testing Program cannot be modified because it has an associated request.", "warning");
+		};
+
+		// =========  Modal dialog functions =========
+		ptm.closeDialogs  = function()
+		{
+			ptm.createProgramDialog.visible = ptm.notesDialog.visible = ptm.testsDialog.visible = ptm.limitDialog.visible = ptm.createProgramDialogStep2.visible = ptm.createProgramDialogStep3.visible = ptm.editCertificateDialog.visible = false;
+		};
+
+		ptm.loadCertificateTypes = function()
+		{
+			RemoteActionService.callRemoteAction("loadCertificates", [], function(result)
+			{
+				ptm.certificateTypes = result;
+				if(ptm.testingProgram)
+					ptm.loadTestingProgramCertificateSelection(ptm.testingProgram);
+			}, ptm);
+		};
+
+		ptm.loadCertificate = function(row)
+		{
+			var id = row &amp;&amp; row.id || row;
+			if(id)
+				RemoteActionService.callRemoteAction("loadCertificate", [ id ], "cert", ptm);
+		};
+
+		//preview certificate template page with blank data
+		ptm.previewCertificate = function(cert)
+		{
+			NavigationService.goToPage(cert.templatePage, cert.id, 'certPreview');
+		};
+
+		//delete certificate, then refresh list
+		ptm.deleteCertificate = function(row)
+		{
+			var id = row &amp;&amp; row.id || row;
+			if(id)
+				RemoteActionService.callRemoteAction("deleteCertificate", [ id ], function(result)
+				{
+					var status = String.isNotEmpty(result) ? "success" : "error";
+					ToastService.toast("Certificate " + (row.name || "") + " deleted.", status);
+					ptm.loadCertificateTypes();
+				}, ptm);
+		};
+
+		//select certificates from testing program and check corresponding boxes in cert table when opening
+		ptm.loadTestingProgramCertificateSelection = function(program)
+		{
+			//set corresponding certificates checkboxes checked for this testing program
+			angular.forEach(ptm.certificateTypes, c => c.$selected = Array.includes(program.certificateTypes, c.id));
+		};
+
+		//select checked certificates from cert table and assign them to current testing program before saving
+		ptm.storeTestingProgramCertificateSelection = function()
+		{
+			var tpCertIds = [];
+			if(Array.isNotEmpty(ptm.certificateTypes))
+				tpCertIds = ptm.certificateTypes.filter(c => c.$selected).distinct("id");
+			if(ptm.testingProgram)
+				ptm.testingProgram.certificateTypes = tpCertIds;
+			return tpCertIds;
+		};
+
+		//create testing program dialog
+		ptm.openCreateProgramDialog  = function(program)
+		{
+			//DE8401
+			ptm.currentStep = 0;
+			ptm.isDisabled = false;
+			//load contact list for droppdown option
+			if(!ptm.internalContacts)
+				RemoteActionService.callRemoteAction("loadContactList", [], function(result) {
+					ptm.internalAccountId = Array.isNotEmpty(result) ? result[0].AccountId : "";
+					ptm.internalContacts = ptm.columns.contact[0].options = result;
+					ptm.internalContacts.indexBy("Id", true);
+				}, ptm);
+
+			if(Array.isEmpty(ptm.certificateTypes))
+				ptm.loadCertificateTypes(program);
+
+			//clear certificates checkbox selection
+			angular.forEach(ptm.certificateTypes, c => delete c.$selected);
+			$timeout(function(){angular.element(document.querySelectorAll('#txt_programName')).focus();}, 200);
+
+			ptm.createProgramDialog.title = program ? "Edit Test Program" : "Create New Test Program";
+			ptm.steps[0].title = ptm.createProgramDialog.title;
+			ptm.hideDateErrors = !program;
+			ptm.createProgramDialogStep3.actions[1].text = program ? "Save" : "Create";
+
+			ptm.createProgramDialogStep2.visible = false;
+			ptm.createProgramDialogStep3.visible = false;
+			ptm.editCertificateDialog.visible = false;
+
+			if(!program)
+			{
+				ptm.createProgramDialog.visible = true;
+				ptm.testingProgram = {name: "New Testing Program " + ptm.getDateTime()};
+				ptm.selectedList = [];
+				ptm.availableList = [];
+			}
+			else
+			{
+				ptm.testingProgram = program;
+				console.log("testingProgram", program);
+
+				RemoteActionService.callRemoteAction("checkIfEditAllowed", [program.id], function(result)
+				{
+					ptm.resultEdited = result;
+					ptm.isDisabled = false;
+					if(ptm.resultEdited.type === "error")
+					{
+						ptm.isDisabled = true;
+						ptm.showTestingProgramInUseValidation();
+					}
+					ptm.createProgramDialog.visible = true;
+				});
+
+				//select certificates checkboxes for this testing program
+				ptm.loadTestingProgramCertificateSelection(program);
+			}
+
+			if(!angular.isDefined(ptm.testingProgram.daysRetestPeriod))
+				ptm.testingProgram.daysRetestPeriod = "0";
+
+			if(!ptm.testingProgram.retestOption &amp;&amp; ptm.daysBeforeRetestdays)
+				ptm.testingProgram.retestOption = ptm.picklists.daysRetest[0];
+
+			if(!angular.isDefined(ptm.testingProgram.retestOption))
+				ptm.testingProgram.retestOption = ptm.picklists.daysRetest[0];
+
+			if(!angular.isDefined(ptm.testingProgram.daysBeforeToRetest))
+				ptm.testingProgram.daysBeforeToRetest = 0;
+
+			if(ptm.testingProgram.retestOption != null)
+			{
+				var option = ptm.picklists.daysRetest.find(element => element.value == ptm.testingProgram.retestOption || element.value == ptm.testingProgram.retestOption.key || element.value == ptm.testingProgram.retestOption.value);
+				if(option)
+					ptm.testingProgram.retestOption = option;
+			}
+
+			if(ptm.testingProgram.daysBeforeToRetest != null)
+			{
+				var findDaysInPickList = false;
+				angular.forEach(ptm.picklists.daysPriorRetest, function(element) {
+					if(ptm.testingProgram.daysBeforeToRetest == element.key) {
+						findDaysInPickList = true;
+						ptm.daysBeforeRetestdays = element;
+						ptm.showDays = true;
+						ptm.showCustomdays = false;
+					}
+				});
+
+				if(!findDaysInPickList)
+				{
+					ptm.showDays = true;
+					ptm.showCustomdays = true;
+					ptm.daysBeforeRetestdaysCustom = ptm.testingProgram.daysBeforeToRetest;
+				}
+			}
+
+			if(ptm.testingProgram.retestOption.key == 0){
+				ptm.showDays = false;
+				ptm.showCustomdays = false;
+			}
+
+		};
+
+		ptm.goToObject  = function(row) {
+			var objectId = CommonUtils.getVar("id", row) || CommonUtils.getVar("Id", row) || row;
+			if(objectId)
+				NavigationService.goToObject(objectId, "view", "details");
+		};
+
+		ptm.goToContact = function(row)
+		{
+			var objectId = CommonUtils.getVar("Contact.Id", row, ptm.internalAccountId);
+			if(objectId)
+				NavigationService.goToObject(objectId, "view", "contact");
+		};
+
+		ptm.formatContact = function(row)
+		{
+			var contact = row &amp;&amp; row.Contact || row;
+			var formatted = "";
+			if(contact)
+				formatted = CommonUtils.formatAddress(contact.MailingAddress, true);
+
+			return formatted.appendString("\nEmail: ", contact.Email)
+				.appendString("\nPhone: ", contact.Phone)
+				.appendString("\nFax: ",   contact.Fax);
+		};
+
+		ptm.showTestingProgramInUseValidation  = function()
+		{
+			if(ptm.isDisabled &amp;&amp; !ptm.userAllowed)
+				ToastService.toast("You cannot edit some fields when the Testing Program is in use.", "warning");
+		};
+
+		//checking if testing program name is present
+		ptm.hasTestingProgramName = function(){
+
+			if(String.isEmpty(ptm.testingProgram.name)){
+				return ToastService.toast(validationMessages.noTestingProgram, "error");
+			}
+
+			ptm.openCreateProgramDialogStep2();
+		};
+
+		//create testing program dialog step 2
+		ptm.openCreateProgramDialogStep2  = function()
+		{
+			ptm.currentStep = 1;
+			if(ptm.checkDate())
+			{
+				ptm.createProgramDialog.visible = false;
+				ptm.createProgramDialogStep2.visible = true;
+				ptm.createProgramDialogStep3.visible = false;
+				ptm.editCertificateDialog.visible = false;
+			}
+		};
+
+		//create testing program dialog step 3
+		ptm.openCreateProgramDialogStep3  = function()
+		{
+			ptm.currentStep = 2;
+			ptm.createProgramDialog.visible = false;
+			ptm.createProgramDialogStep2.visible = false;
+			ptm.createProgramDialogStep3.visible = true;
+			ptm.editCertificateDialog.visible = false;
+
+			$log.info("ptm.testingProgram", ptm.testingProgram);
+			//load available labs
+			ptm.editTestingProgramId = ptm.testingProgram.id || null;
+			ptm.loadSelectedList (ptm.editTestingProgramId, '', listSize, 0);
+			ptm.loadAvailableList(ptm.editTestingProgramId, '', listSize, 0);
+		};
+
+		//create testing program dialog step 1 Clicked on previous
+		ptm.openCreateProgramDialogStep1 = function()
+		{
+			ptm.currentStep = 0;
+			ptm.createProgramDialog.visible = true;
+			ptm.createProgramDialogStep2.visible = false;
+			ptm.createProgramDialogStep3.visible = false;
+			ptm.editCertificateDialog.visible = false;
+		};
+
+		ptm.openEditCertificateDialog = function(row)
+		{
+			ptm.createProgramDialog.visible = false;
+			ptm.createProgramDialogStep2.visible = false;
+			ptm.createProgramDialogStep3.visible = false;
+			ptm.editCertificateDialog.visible = true;
+			ptm.editCertificateDialog.title = row ? "Edit Certificate Type" : "Create Certificate Type";
+			$timeout(function(){angular.element(document.querySelectorAll('#txt_certificateName')).focus();}, 200);
+
+			ptm.cert = row || { showResellerSectionByDefault: false, useInFilename: false };
+			console.log("ptm.cert:", ptm.cert);
+
+			//load selected contact objects by their id
+			ptm.contacts = [];
+			angular.forEach(ptm.cert.contacts, function(cc){
+				var contact = cc.Id &amp;&amp; Array.isNotEmpty(ptm.internalContacts) ? ptm.internalContacts.by.Id[cc.Id] : null;
+				ptm.contacts.push({Contact: contact });
+			});
+
+			if(String.isEmpty(ptm.cert.templatePage))
+				ptm.cert.templatePage = ptm.templatePages[0];
+			//RemoteActionService.callRemoteAction("loadCertificate",[ ptm.cert.id ],'cert',ptm);
+			RemoteActionService.callRemoteAction("loadImageList", [], 'imageList', ptm);
+		};
+
+		ptm.saveCertificate = function()
+		{
+			//validate if certificate name and title, are present
+			var message = "";
+			if(String.isEmpty(ptm.cert.name) || String.isEmpty(ptm.cert.title))
+				message = "Please fill the required fields:";
+
+			if(String.isEmpty(ptm.cert.name))
+				message += "&lt;br/>Certificate name is required.";
+
+			if(String.isEmpty(ptm.cert.title))
+				message += "&lt;br/>Certificate title is required.";
+
+			if(String.isNotEmpty(message))
+				return ToastService.toast(message, "error");
+
+			//if valid, save
+			ptm.savingCertificate = true;
+			ptm.cert.contacts   = ptm.contacts.map(c => CommonUtils.getVar("Contact", c));    //save list of contacts
+			ptm.cert.contactIds = ptm.contacts.map(c => CommonUtils.getVar("Contact.Id", c)); //save list of contact ids
+
+			RemoteActionService.callRemoteAction("saveCertificate", ptm.cert, function(result) {
+				ptm.savingCertificate = false;
+				ptm.editCertificateDialog.visible = false;
+				ptm.createProgramDialog.visible = true;
+				var status = String.includes(result, "success") ? "success" : "error";
+				ToastService.toast(result, status);
+				ptm.loadCertificateTypes(); //refresh cert list
+			}, ptm);
+		};
+
+		ptm.createTestingProgram  = function()
+		{
+			if(Array.isNotEmpty(ptm.availableList) &amp;&amp; Array.isEmpty(ptm.selectedList))
+				return ToastService.toast(validationMessages.noSelectedLab, "error");
+
+			ptm.testingProgram.labs = ptm.selectedList;
+			ptm.selectedList = [];
+			$log.info("ptm.testingProgram", ptm.testingProgram);
+			ptm.testingProgram.lastModifiedDate = null;
+			ptm.testingProgram.createdDate = null;
+			ptm.testingProgram.retestOption = ptm.testingProgram.retestOption.value;
+			ptm.testingProgram.daysBeforeToRetest = ptm.daysBeforeRetestdays.key == 'custom' ? ptm.daysBeforeRetestdaysCustom : ptm.daysBeforeRetestdays.key ;
+			ptm.testingProgram.daysBeforeToRetest = ptm.testingProgram.daysBeforeToRetest == null ? 0 : parseInt(ptm.testingProgram.daysBeforeToRetest, 10) ;
+			RemoteActionService.callRemoteAction("saveTestingProgram", ptm.testingProgram, ptm.onCreateTestingProgram, ptm)
+				.catch(ptm.onSaveError);
+			ptm.closeDialogs();
+		};
+
+		ptm.onCreateTestingProgram = function(newTestingProgram)
+		{
+			if(!newTestingProgram) return;
+			ptm.testingPrograms.push(newTestingProgram);
+			if(Array.isEmpty(ptm.tpColumns))
+				ptm.tpColumns = ptm.getColumns(newTestingProgram);
+
+			//ptm.createTestingProgramLabs( newTestingProgram.id );
+
+			$state.go("program", {programId: newTestingProgram.id });
+		};
+
+		//========= Product Test table functions in category screen =========
+		ptm.getName	              = pt => pt.name;
+		ptm.getNotes              = pt => pt.notes;
+		ptm.isQuantitative        = pt => pt.testingType == "Quantitative" || String.isEmpty(pt.testingType);
+		ptm.isQualitative         = pt => pt.testingType == "Qualitative";
+
+		//if request is associated and test is already existing, or is a new version of an existing test: fields should not be editable
+		ptm.isProductTestReadOnly = pt => ptm.testingProgram &amp;&amp; ptm.testingProgram.requestAssociated &amp;&amp; pt &amp;&amp; (pt.$originalTest || !pt.$added);
+
+		ptm.isDateReadOnly = pt => ptm.testingProgram &amp;&amp; ptm.testingProgram.requestAssociated &amp;&amp; pt &amp;&amp; !pt.$added;
+
+		ptm.getLimitsText  = function(pt)
+		{
+			var lines = "", sep = "";
+			if(Array.isEmpty(pt.limits))
+				return lines;
+
+			var testLimits = Array.sortObjectsBy(pt.limits, "type");
+			testLimits = testLimits.groupBy("type");
+
+			for(var type in testLimits)
+			{
+				var limits = testLimits[type];
+				if(type) {
+					lines += sep + String.format("[{0}]", type);
+					sep = "\n";
+				}
+
+				for(var i = 0; i &lt; limits.length; i++)
+				{
+					var l = limits[i];
+					var line = "";
+					if(ptm.isQualitative(pt))
+						line = String.format("{0}. {1}: {2}",         i + 1, l.limitMessage || "", l.exceedStatus || "");
+					else if(ptm.isQuantitative(pt))
+						line = String.format("{0}. {1} {2} {3}: {4}", i + 1, l.operator || "", l.testLimit || "", l.unit || "", l.exceedStatus || "");
+					lines += sep + line;
+					sep = "\n";
+				}
+			};
+
+			if(lines) lines = "Limits:\n" + lines;
+			return lines;
+		};
+
+		//AP-18
+		ptm.certificateRulesDialog = {
+			visible: false,
+			open:	ptm.openCatExceptionRules,
+			columns: []
+		};
+
+		//copy selected limit unit to productTest and all other limits for this test
+		ptm.copyUnits = function(limit)
+		{
+			if(!ptm.productTest &amp;&amp; !ptm.selectedTestGroup) return;
+
+			var unit = null;
+			if(limit &amp;&amp; ptm.productTest)
+				unit = ptm.productTest.unit = limit.unit;
+			else if(limit &amp;&amp; ptm.selectedTestGroup)
+				unit = ptm.selectedTestGroup.unit = limit.unit;
+
+			ptm.unitColumn.defaultValue = unit;
+
+			//copy to all types of limits for this test
+			for (var type in  ptm.testLimits)
+			{
+				var limits = ptm.testLimits[type];
+				if(Array.isNotEmpty(limits))
+					for(var i = 0; i &lt; limits.length; i++)
+						limits[i].unit = unit;
+			}
+		};
+
+		// reset additional testing for the limit if message (exceed status) != "Additional Testing Needed"
+		ptm.resetAddTesting = function(limit){
+			if ( limit.exceedStatus != additionalTestingOption ) {
+				limit.addTestClassId = null;
+			}
+		};
+
+		//2 product test limits dialog
+		ptm.openLimits = function(pt)
+		{
+			$log.info("openLimits", pt);
+			if(!pt) return;
+			ptm.productTest = pt;
+			ptm.unitColumn.defaultValue = ptm.productTest.unit;
+
+			ptm.testTitle = (pt.className &amp;&amp; pt.testName) ? pt.className + " - " + pt.testName : pt.className || pt.testName;
+
+			ptm.productTestLimitColumns = ptm.columns.productTestLimit[pt.testingType];
+			if(!ptm.productTestLimitColumns) return;
+
+			//initialize with 1 row if needed
+			if(!pt.limits) pt.limits = [];
+			if(!pt.limits.length) {
+				// initialize limit type for both tabs - DE7585
+				pt.limits.push({ type: ptm.picklists.limitType[0] });
+				pt.limits.push({ type: ptm.picklists.limitType[1] });
+			}
+
+			angular.forEach(pt.limits, function(l) {
+				if(!l.type)
+					l.type = ptm.limitType;
+			});
+
+			//set table model = current product test limits
+			ptm.testLimits = pt.limits.groupBy("type");
+			angular.forEach(ptm.picklists.limitType, function(type) {
+				if(!ptm.testLimits[type])
+					ptm.testLimits[type] = [];
+			});
+
+			// update model to show first testLimit table
+			ptm.limitType = pt.limits[0].type;
+			// select first tab that has test limits
+			$scope.$broadcast('selectTab', ptm.limitType);
+
+			// load added classes for additional testing in limits
+			ptm.loadAddedClasses();
+
+			ptm.limitsUndo = angular.copy(pt.limits);
+			ptm.limitDialog.visible = true;
+
+			ptm.addedProductTest = pt.$added;
+		};
+
+		//========= Rule builder functions in category screen =========
+
+		// use Rule Builder for product test Exception dialog
+		ptm.openExceptionRules = function(pt){
+			$log.info("openExceptionRules", pt);
+			if(!pt || !pt.id){
+				ToastService.toast("Save the category first before attempting to create exceptions.", "warning");
+				return;
+			}
+			ptm.productTest = pt;
+			ptm.rulesDialog.visible = true;
+			var operators = ptm.showPicklistOptions('Operators', 'Test rule component');
+			var actionsType = ptm.showPicklistOptions('ActionsTypes', 'Test rule component');
+			ptm.rulesDialog.columns = [
+				{ defaultValue: "If" }, // popover: r => r.name },
+				{ field: "attributeId", label: "Attribute", type: "picklist", options: ptm.attributes, change: ptm.onAttributeChange },
+				{ field: "operator", label: "Operator", type: "picklist", options: operators, defaultValue: "=" },
+				{ field: "value",    label: "Value", type: "picklist", blankOption: "Please Select", placeholder: "Enter value" },
+				{ defaultValue: "Then" },
+				{ field: "actionType",   label: "Action", type: "picklist", options: actionsType }
+			];
+
+			ptm.loadAttributes();
+		};
+
+		ptm.openAttributeDialog = function(pt)
+		{
+			ptm.ptAttributeDialog.visible = true;
+			ptm.productTest = pt;
+			ptm.unitColumn.defaultValue = ptm.productTest.unit;
+
+			ptm.testTitle = String.appendString(pt.className, " - ", pt.testName);
+			console.log("ptm.openAttributeDialog");
+			if(!pt.attributes)               pt.attributes = [];
+			if(Array.isEmpty(pt.attributes)) pt.attributes.push({});
+
+			ptm.addedProductTest = pt.$added;
+			ptm.attributesUndo = angular.copy(pt.attributes);
+
+			ptm.loadAttributes();
+		};
+
+		ptm.closeAttributeDialog = function()
+		{
+			console.log("closeAttributeDialog", ptm.attributesUndo);
+			if(ptm.productTest &amp;&amp; ptm.attributesUndo)
+				ptm.productTest.attributes = ptm.attributesUndo;
+			ptm.attributesUndo = null;
+		};
+
+		ptm.removeEmptyAttributes = function()
+		{
+			if(!ptm.productTest || Array.isEmpty(ptm.productTest.attributes)) return;
+
+			//remove empty attributes and duplicate attribute/value combinations
+			ptm.productTest.attributes = ptm.productTest.attributes.filter(a => String.isNotBlank(a.attributeId) &amp;&amp; String.isNotBlank(a.value));
+			ptm.productTest.attributes = ptm.productTest.attributes.dedupBy(a => (a.attributeId || "") + "_" + (a.value || "") );
+		};
+
+		ptm.showPicklistOptions = function(picklist, categoryRule)
+		{
+			var picklistOptions = [];
+			if(picklist == 'Operators')
+			{
+				//This is a quick fix to only give the user the options of select "=" and "Apply Component Tests to Parent Certificate"
+				if(categoryRule != 'Category rule component'){
+					angular.forEach(ptm.auxPicklists.operator, function(operator) {
+						if(operator != 'Exact Match' &amp;&amp; operator != 'Is Included')
+							picklistOptions.push(operator);
+					});
+				}
+				else{
+					angular.forEach(ptm.auxPicklists.operator, function(operator) {
+						if(operator == '=')
+							picklistOptions.push(operator);
+					});
+				}
+			}
+			else if(categoryRule != 'Category rule component')
+			{
+				angular.forEach(ptm.auxPicklists.actionType, function(actionsTypes) {
+					if(actionsTypes != 'Apply Component Tests to Parent Certificate' &amp;&amp; actionsTypes != 'Apply Related Product Tests to Parent Certificate')
+						picklistOptions.push(actionsTypes);
+				});
+			}
+			else
+			{
+				angular.forEach(ptm.auxPicklists.actionType, function(actionsTypes) {
+					if(actionsTypes == 'Apply Component Tests to Parent Certificate')
+						picklistOptions.push(actionsTypes);
+				});
+			}
+
+			return picklistOptions;
+		};
+
+		ptm.certRulesButtonText = function()
+		{
+			var rules = ptm.category.exceptionRules || ptm.categoryRules;
+			var nbRules = Array.getCount(rules);
+			return 'Generate Certification Rule (' + nbRules + ')';
+		};
+
+		ptm.openCatExceptionRules = function()
+		{
+			ptm.certificateRulesDialog.visible = true;
+			ptm.certificateRulesDialog.objectType = 'RuleCategory';
+			var operators   = ptm.showPicklistOptions('Operators',    'Category rule component');
+			var actionsType = ptm.showPicklistOptions('ActionsTypes', 'Category rule component');
+
+			ptm.certificateRulesDialog.columns = [
+				{ defaultValue: "For common attribute" }, // popover: r => r.name },
+				{ field: "attributeId", label: " ", type: "picklist" },
+				{ field: "operator", label: " ", type: "picklist", options: operators, defaultValue: " " },
+				{ defaultValue: "Then" },
+				{ field: "actionType", label: " ", type: "picklist", options: actionsType }
+			];
+
+			ptm.loadAttributes();
+		};
+
+		ptm.loadAttributes = function()
+		{
+			if(ptm.linkedObject)  ptm.rulesDialog.objectId = ptm.linkedObject.id;
+			if(!ptm.rulesDialog.objectId) ptm.rulesDialog.objectId = "";
+
+			if(ptm.attributes) {
+				ptm.attributes.indexBy("id", true);
+				if(ptm.productTest)
+					angular.forEach(ptm.productTest.attributes, ptm.onAttributeChange);
+				return RemoteActionService.resolvePromise(ptm.attributes);
+			}
+
+			return RemoteActionService.callRemoteAction("getProductTestAttributes", [], function(result)
+			{
+				ptm.attributes = result || [];
+				ptm.attributes.indexBy("id", true);
+
+				if(Array.isNotEmpty(ptm.rulesDialog.columns))
+					ptm.rulesDialog.columns[1].options = result;
+				if(Array.isNotEmpty(ptm.certificateRulesDialog.columns))
+					ptm.certificateRulesDialog.columns[1].options = result;
+				if(Array.isNotEmpty(ptm.columns.ptAttributes))
+					ptm.columns.ptAttributes[0].options = result;
+
+				//load options for each picklist attribute
+				ptm.optionLists = ptm.attributes.distinct("optionListName", true);
+				for(var i = 0; i &lt; Array.getCount(ptm.optionLists); i++) {
+					ptm.loadAttributeOptions(ptm.optionLists[i]).then(function() {
+						if(ptm.productTest)
+							angular.forEach(ptm.productTest.attributes, ptm.onAttributeChange);
+					});
+				}
+			});
+		};
+
+		ptm.loadAttributeOptions = function(listName)
+		{
+			if(listName &amp;&amp; !ptm.picklists[listName])
+				return RemoteActionService.callRemoteAction("getItemList", [listName, null], listName, ptm.picklists);
+			return RemoteActionService.resolvePromise();
+		};
+
+		ptm.onAttributeChange = function(row)
+		{
+			console.log("onAttributeChange", row.attributeId);
+			var attr = CommonUtils.getVar("attributes.by.id." + row.attributeId, ptm);
+			if(attr &amp;&amp; attr.uniqueId)
+				row.attributeKey = attr.uniqueId;
+
+			var listName = CommonUtils.getVar("optionListName", attr);
+			if(!listName)
+				delete row.$options; //use default options
+			else
+				row.$options = { operator: ["=", "!="], value: ptm.picklists[listName] };
+		};
+
+		ptm.cancelLimits = function()
+		{
+			if(ptm.productTest) ptm.productTest.limits = ptm.limitsUndo;
+			if(ptm.selectedTestGroup) ptm.selectedTestGroup.limits = ptm.limitsUndo;
+			ptm.selectedTestGroup = null;
+			ptm.validateLimits = false;
+			ptm.clearLimitsToDelete();
+		};
+
+		//Add Limits to an array to mass delete limits.
+		ptm.deleteLimit = function(row)
+		{
+			ptm.listLimitsToDelete.push(row.id);
+		};
+
+		ptm.clearLimitsToDelete = function()
+		{
+			ptm.listLimitsToDelete = [];
+		};
+
+		ptm.onDeleteLimits = function(response){
+			ptm.clearLimitsToDelete();
+			ToastService.toast(response, "success");
+		};
+
+		// ========= validation functions for product tests and limits =========
+
+		// check if limit fields are complete
+		ptm.validateTestLimits = function()
+		{
+			var hasError = null;
+			if(ptm.validateLimits){
+				hasError = ptm.duplicateLimits();
+				if(hasError != null){
+					ToastService.toast(validationMessages.duplicateLimits, "error");
+					return hasError;
+				}
+				if(ptm.productTest) hasError = ptm.emptyValue(ptm.productTest);
+				if(!ptm.productTest &amp;&amp; ptm.selectedTestGroup) hasError = ptm.emptyValue(ptm.selectedTestGroup);
+				if(hasError != null) return hasError;
+			}
+			return hasError;
+		};
+
+		ptm.validateProductTestLimits = function(pt, status)
+		{
+			//if no limits
+			if(!pt || Array.isEmpty(pt.limits))
+				return ToastService.toast(validationMessages.noLimits, status);
+
+			for(var i = 0; i &lt; pt.limits.length; i++)
+			{
+				var limit = pt.limits[i];
+				if(ptm.isQualitative(pt) &amp;&amp; ptm.isEmptyLimit(limit, pt))
+					return ToastService.toast(validationMessages.limitsQualitative, status);
+
+				if(ptm.isQuantitative(pt) &amp;&amp; ptm.isEmptyLimit(limit, pt))
+					return ToastService.toast(validationMessages.limitsQuantitative, status);
+
+				// if additional testing needed
+				if(limit.exceedStatus == additionalTestingOption )
+				{
+					//check if additional class is specified
+					if(!limit.addTestClassId)
+						return ToastService.toast(validationMessages.limitsAddTesting, status);
+
+					// check if additional class is in the product tests lists (and hasn't been removed)
+					var classExists = false;
+					for (var j = 0; j &lt; ptm.category.productTests.length; j++){
+						if (ptm.category.productTests[j].classId == limit.addTestClassId){
+							classExists = true;
+							break;
+						}
+					}
+					if (!classExists)
+						return ToastService.toast(validationMessages.limitsAddTestingClass, status);
+				}
+			}
+			return true;
+		};
+
+		// check if data in test category is correct before saving
+		ptm.validateTestCategory = function(category)
+		{
+			var ret = true;
+			//if no product tests in catgory
+			if(!category || Array.isEmpty(category.productTests)) {
+				ToastService.toast(validationMessages.noProductTests, "error");
+				ret = false;
+			}
+
+			if(String.isEmpty(category.name)) {
+				ToastService.toast(validationMessages.noCategoryName, "error");
+				ret = false;
+			}
+
+			// check if test class, test name and test method is present for every substance added
+			for(var i = 0; i &lt; category.productTests.length; i++)
+			{
+				var item = category.productTests[i];
+				if (String.isEmpty(item.classId) || String.isEmpty(item.testId)) // test method is not required
+				{
+					ret = false;
+					ToastService.toast(validationMessages.productTestIncomplete, "error");
+				}
+
+				if (!ptm.validateProductTestLimits(item, "error"))
+					ret = false;
+			}
+
+			var emptyTestGroups = [];
+			angular.forEach(ptm.category.testGroups, function(group, index, testGroups) {
+				// remove test groups with empty names
+				if(String.isEmpty(group.name)){
+					emptyTestGroups.push(group);
+				}
+				else if(Array.isEmpty(group.$includedTests)) {
+					ToastService.toast(validationMessages.groupShouldHaveTest, "error");
+					ret = false;
+				}
+				else if(Array.isEmpty(group.limits)){
+					ToastService.toast(validationMessages.groupShouldHaveLimits, "error");
+					ret = false;
+				}
+			});
+
+			angular.forEach(emptyTestGroups, ptm.removeGroupSummation);
+
+			if(ret)
+				ptm.cleanSumGroups();
+
+			return ret;
+		};
+
+		ptm.cleanSumGroups = function()
+		{
+			angular.forEach(ptm.allProductTests, function(el)
+			{
+				delete el.$selected;
+				if(ptm.isQualitative(el)) return;
+
+				var group = Array.find(ptm.category.testGroups, g => g &amp;&amp; g.key == el.groupKey);
+				if(!group) group  = ptm.getGroupById(el.groupKey);
+				if(!group) return;
+
+				if(String.isNotEmpty(el.groupKey) &amp;&amp; String.isEmpty(group.name))
+					ToastService.toast(validationMessages.groupShouldHaveTest, "error");
+			});
+		};
+
+		ptm.saveLimits = function()
+		{
+			ptm.validateLimits = true;
+			var hasError = ptm.validateTestLimits();
+			if(hasError != null){
+				// update table model and fire selectTab event
+				ptm.limitType = hasError;
+				$scope.$broadcast('selectTab', hasError);
+			}
+			else
+			{
+				var limits = [];
+				//regroup all ptm.testLimits in 1 list
+				for(var type in ptm.testLimits)
+				{
+					ptm.testLimits[type].forEach(function(l)
+					{
+						l.type = type;
+						var test = [];
+						var obj = {};
+						for(var k in l){
+							if(k != 'hasError'){
+								obj[k] = l[k];
+							}
+						}
+						test.push(obj);
+						limits = limits.concat(test);
+					});
+				}
+
+				if(ptm.productTest)
+					ptm.productTest.limits = limits;
+				else if(ptm.selectedTestGroup)
+					ptm.selectedTestGroup.limits = limits;
+
+				// remove empty limits from limits array (so the user dont have to delete them manually)
+				ptm.removeEmptyLimits();
+				ptm.limitDialog.visible = false;
+				ptm.summationLimitDialog.visible = false;
+				ptm.validateLimits = false;
+				ptm.selectedTestGroup = null;
+				ptm.productTest = null;
+			}
+		};
+
+		ptm.duplicateLimits = function()
+		{
+			var hasError = null;
+			var value = '';
+			var message = '';
+			var addTest = '';
+			var compareValue = '';
+			var compareMessage = '';
+			var compareAddTest = '';
+			var columnFields = [];
+			var errorArray = [];
+
+			for(var f = 0; f &lt; ptm.productTestLimitColumns.length; f++){
+				if(ptm.productTestLimitColumns[f].field != 'exceedStatus' &amp;&amp; ptm.productTestLimitColumns[f].field != 'unit' &amp;&amp; ptm.productTestLimitColumns[f].field != 'addTestClassId' &amp;&amp; ptm.productTestLimitColumns[f].field != null)
+					columnFields.push(ptm.productTestLimitColumns[f].field);
+			}
+
+			for(var type in ptm.testLimits){
+				for(var i = 0; i &lt; ptm.testLimits[type].length; i++){
+					for(var g = 0; g &lt; columnFields.length; g++){
+						value += ptm.testLimits[type][i][columnFields[g]] + ";";
+					}
+					message = ptm.testLimits[type][i]['exceedStatus'];
+					addTest = ptm.testLimits[type][i]['addTestClassId'] || '';
+					for(var j = i + 1; j &lt; ptm.testLimits[type].length; j++){
+						for(var g = 0; g &lt; columnFields.length; g++){
+							compareValue += ptm.testLimits[type][j][columnFields[g]] + ";";
+						}
+						compareMessage = ptm.testLimits[type][j]['exceedStatus'];
+						compareAddTest = ptm.testLimits[type][j]['addTestClassId'] || '';
+						var errorMatch = [];
+						if(value == compareValue &amp;&amp; message == compareMessage &amp;&amp; addTest == compareAddTest) errorMatch.push(i, j);
+						compareValue = '';
+						compareMessage = '';
+						compareAddTest = '';
+						for(var h = 0; h &lt; errorMatch.length; h++){
+							if(!errorArray.includes(errorMatch[h])) errorArray.push(errorMatch[h]);
+						}
+					}
+					value = '';
+					message = '';
+					addTest = '';
+				}
+				// update limit hasError attribute
+				if(errorArray.length > 0 &amp;&amp; hasError == null) hasError = type;
+				ptm.updateHasError(type, errorArray);
+				errorArray.length = 0;
+			}
+			return hasError;
+		};
+
+		ptm.emptyValue = function(pt)
+		{
+			var hasError = null;
+			var firstError = null;
+			var errorArray = [];
+			if(ptm.isQualitative(pt)){
+				for(var type in ptm.testLimits){
+					for(var i = 0; i &lt; ptm.testLimits[type].length; i++){
+						if(ptm.isEmptyLimit(ptm.testLimits[type][i], pt)){
+							errorArray.push(i);
+						}
+					}
+					hasError = ptm.updateHasError(type, errorArray);
+					errorArray.length = 0;
+					if (firstError == null) firstError = hasError;
+				}
+			}
+			if(ptm.isQuantitative(pt)){
+				for(var type in ptm.testLimits){
+					for(var i = 0; i &lt; ptm.testLimits[type].length; i++){
+						if(ptm.isEmptyLimit(ptm.testLimits[type][i], pt)) {
+							errorArray.push(i);
+						}
+					}
+					hasError = ptm.updateHasError(type, errorArray);
+					errorArray.length = 0;
+					if (firstError == null) firstError = hasError;
+				}
+			}
+
+			// check if every type has errors (empty value), then display empty value message
+			var emptyLimits = true;
+			for(var type in ptm.testLimits){
+				for(var i = 0; i &lt; ptm.testLimits[type].length; i++){
+					if ( !ptm.testLimits[type][i].$hasError ){
+						emptyLimits = null;
+						return emptyLimits;
+					}
+				}
+			}
+		};
+
+		ptm.updateHasError = function(type, errorArray)
+		{
+			var hasError = null;
+			for(var i = 0; i &lt; ptm.testLimits[type].length; i++){
+				var limit = ptm.testLimits[type][i];
+				if(errorArray.includes(i)){
+					limit.$hasError = true;
+					hasError = type;
+				} else {
+					delete limit.$hasError;
+				}
+			}
+			return hasError;
+		};
+
+		ptm.isEmptyLimit = function(limit, pt)
+		{
+			if(ptm.isQualitative(pt))
+				return String.isEmpty(limit.limitMessage) || String.isEmpty(limit.exceedStatus);
+			if(ptm.isQuantitative(pt))
+				return String.isEmpty(limit.operator) || String.isEmpty(limit.testLimit) || String.isEmpty(limit.exceedStatus);
+		};
+
+		ptm.removeEmptyLimits = function()
+		{
+			if(ptm.productTest)
+				return ptm.productTest.limits = ptm.productTest.limits.filter( limit => !ptm.isEmptyLimit(limit, ptm.productTest) );
+			else if(ptm.selectedTestGroup)
+				return ptm.selectedTestGroup.limits = ptm.selectedTestGroup.limits.filter( limit => !ptm.isEmptyLimit(limit, ptm.selectedTestGroup) );
+		};
+
+		//product test notes dialog
+		ptm.openNotes = function(pt)
+		{
+			if(!pt) return;
+
+			$log.info("openNotes", pt);
+
+			ptm.testTitle = (pt.className &amp;&amp; pt.testName) ? pt.className + " - " + pt.testName : pt.className || pt.testName;
+			ptm.groupTitle = pt.name ? pt.name : '';
+
+			// check which title to show
+			// $includedTests is a field for the group object only
+			ptm.notesTitle = angular.isDefined(pt.$includedTests) ? "Group Notes" : "Test Notes";
+			ptm.productTest = pt;
+			ptm.notesUndo = angular.copy(pt.notes);
+			ptm.notesDialog.visible = true;
+			ptm.addedProductTest = pt.$added;
+			$timeout(function(){angular.element(document.querySelectorAll('#edit_notes')).focus();}, 200);
+		};
+
+		ptm.cancelNotes = function()
+		{
+			$log.info("cancelNotes", ptm.notesUndo);
+			ptm.productTest.notes = ptm.notesUndo;
+		};
+
+		ptm.saveNotes = function()
+		{
+			$log.info("saveNotes", ptm.notesUndo);
+		};
+
+		ptm.getGroupSumText = function(group)
+		{
+			if(!group || Array.isEmpty(group.$includedTests)) return;
+
+			var i = 1;
+			var line = "";
+			angular.forEach(group.$includedTests, el => line += i++ + '. ' + el.name + "\n");
+			return line;
+		};
+
+		ptm.getAttributeText = function(attr)
+		{
+			if(!attr) return "";
+
+			var attribute = CommonUtils.getVar("attributes.by.id." + attr.attributeId, ptm);
+			var options   = attribute &amp;&amp; attribute.optionListName &amp;&amp; ptm.picklists[attribute.optionListName];
+			var option    = Array.find(options, opt => opt &amp;&amp; opt.value == attr.value);
+			var value     = option ? option.name : attr.value;
+			if(!attribute) return attr.name;
+
+			return String.appendString(attribute.name, " = ", value);
+		};
+
+		ptm.getAttributesText = function(pt) {
+			var text = "";
+			angular.forEach(pt.attributes, function(attr) {
+				var at = ptm.getAttributeText(attr);
+				if(at) text += at + "\n";
+			});
+			if(text) text = "Attributes:\n" + text;
+			return text;
+		};
+
+		ptm.getRulesText   = function(pt) {
+			var text = "";
+			for(var r = 0; r &lt; Array.getCount(pt.exceptionRules); r++)
+				text += String.format("{0}. {1}\n", r + 1, pt.exceptionRules[r]);
+			if(text) text = "Exception Rules:\n" + text;
+			return text; // || "No exception rules.";
+		};
+
+		//========= end Product Test table functions in category screen =========
+		ptm.getDateTime = function()
+		{
+			var dt = new Date();
+			return dt.toLocaleDateString() + " " + dt.toLocaleTimeString();
+		};
+
+		ptm.saveTestCategory = function()
+		{
+			ptm.category.productTests = ptm.category.productTests.concat(ptm.addedProductTests);
+			ptm.addedProductTests = [];
+
+			if(!ptm.validateTestCategory(ptm.category))
+				return;
+
+			//Remove test groups limits: delete array of limits previously selected.
+			if(Array.isNotEmpty(ptm.listLimitsToDelete))
+				RemoteActionService.callRemoteAction("deleteProductTestLimits", [ ptm.listLimitsToDelete ], ptm.onDeleteLimits, ptm);
+
+			console.log('ptm.category', ptm.category);
+			for(var i = 0; i &lt; Array.getLength(ptm.category.productTests); i++)
+			{
+				for(var j = 0; j &lt; Array.getLength(ptm.category.productTests[i].attributes); j++) {
+					var attr = ptm.category.productTests[i].attributes[j];
+					attr.name = ptm.getAttributeText(attr);
+				}
+
+				for(var j = 0; j &lt; Array.getLength(ptm.category.productTests[i].limits); j++)
+					ptm.category.productTests[i].limits[j].order = j + 1;
+			}
+
+			ptm.updatePTAddColumns(ptm.category);
+			RemoteActionService.callRemoteAction("saveTestCategory", [ptm.category, ptm.deleteProductTestIds, ptm.deleteGroupTestIds], ptm.onSaveTestCategory, ptm)
+				.catch(ptm.onSaveError);
+
+			if(Array.isNotEmpty(ptm.certificateRulesDialog.deletedRuleIds))
+				RemoteActionService.callRemoteAction("deleteRules", [ptm.certificateRulesDialog.deletedRuleIds]);
+		};
+
+		//error handler function
+		ptm.onSaveError = error => ToastService.toastRemoteActionError(error, ptm);
+
+		ptm.onSaveTestCategory = function(newCategory)
+		{
+			if(!newCategory) return;
+			if(Array.isEmpty(ptm.tcColumns))
+				ptm.tcColumns = ptm.getColumns(newCategory);
+			ptm.disableSave = true;
+			ptm.cancelButtonText = 'Back';
+
+			//go back to category list
+			ToastService.toast(validationMessages.categorySaved, "success");
+
+			//or stay on category screen: use updated object with new ids
+			ptm.category.id = newCategory.id;
+			//AP-18
+			if(Array.isNotEmpty(ptm.certificateRulesDialog.rules) &amp;&amp; ptm.certificateRulesDialog.rules[0].attributeId){
+				RemoteActionService.callRemoteAction("saveRules", [ptm.category.id, ptm.certificateRulesDialog.rules, ptm.certificateRulesDialog.objectType]);
+			}
+			if(newCategory.productTests)
+				for(var i = 0; i &lt; newCategory.productTests.length; i++)
+				{
+					ptm.category.productTests[i].id = newCategory.productTests[i].id;
+					ptm.category.productTests[i].limits = newCategory.productTests[i].limits;
+					ptm.category.productTests[i].columns = newCategory.productTests[i].columns;
+				}
+
+			return $state.go("program", {programId: newCategory.programId });
+		};
+
+		ptm.deleteConfirmationDialog = function(p){
+			// If programId is present, it is a category
+			if(!p.requestAssociated){
+				if(p.programId){
+					ptm.categoryId = p.id;
+				}else{
+					ptm.testingProgram = p;
+				}
+				ptm.confirmationDialogVisibility = true;
+			}else{
+				ToastService.toast('This Testing Program cannot be modified because it has an associated request.', 'error');
+			}
+		};
+
+		ptm.deleteProductTestDialogOpen = function(pt){
+			if(!ptm.testingProgram.requestAssociated || pt.$added) {
+				ptm.productTest = pt;
+				ptm.deleteProductTestDialog.visible = true;
+			} else {
+				ToastService.toast("You can't remove this Product Test.", "warning");
+			}
+		};
+
+		ptm.deleteGroupSummationDialogOpen = function(gs){
+			ptm.summationGroup = gs;
+			ptm.deleteGroupSummationDialog.visible = true;
+		};
+
+		ptm.deactivateProductTestDialogOpen = function(pt){
+			if(!pt.$added) {
+				ptm.productTest = pt;
+				ptm.deactivateProductTestDialog.visible = true;
+			} else {
+				ToastService.toast("Save the category first before attempting to deactivate this test protocol.", "warning");
+			}
+		};
+
+		ptm.deleteTestingCategory = function(){
+			ptm.confirmationDialogVisibility = false;
+			// If user is prompted with additional delete confirmations call delete directly
+			if(ptm.confirmDelete){
+				ptm.confirmDelete = false;
+				RemoteActionService.callRemoteAction("deleteTestingCategory", ptm.categoryId, function(callback){
+					$log.info('callback', callback);
+					if(!callback || !callback.type)
+						return;
+
+					if(callback.type === 'deleted'){
+						// Object deleted
+						$state.go($state.current, {}, {reload: true});
+					}else if(callback.type === 'delete_error'){
+						ptm.informationDialogMessage = callback.message;
+					}
+				}, ptm);
+			}else{
+				// Check if record can be deleted or if additional confirmation is needed
+				RemoteActionService.callRemoteAction("checkTestingCategoryDelete", ptm.categoryId, function(callback){
+					$log.info('callback', callback);
+					if(!callback || !callback.type)
+						return;
+
+					if(callback.type === 'deleted'){
+						// Object deleted
+						$state.go($state.current, {}, {reload: true});
+					}else if(callback.type === 'delete_error'){
+						ptm.informationDialogMessage = callback.message;
+					}else if(callback.type === 'error')
+					{
+						ptm.informationDialogMessage = callback.message;
+						ToastService.toast("Testing Category is currently in use and cannot be deleted", "error");
+					}
+					else if(callback.type === 'confirmation')
+					{
+						ptm.confirmDelete = true;
+						ptm.confirmationDialogMessage = callback.message;
+						ptm.confirmationDialogVisibility = true;
+					}
+
+				}, ptm);
+			}
+		};
+
+		ptm.deleteTestingProgram = function()
+		{
+			// If user is prompted with additional delete confirmations call delete directly
+			if(ptm.confirmDelete)
+			{
+				ptm.confirmDelete = false;
+				RemoteActionService.callRemoteAction("deleteTestingProgram", ptm.testingProgram.id, function(callback)
+				{
+					$log.info('callback', callback);
+					if(!callback || !callback.type)
+						return;
+
+					if(callback.type === 'deleted'){
+						// Object deleted
+						$state.go($state.current, {}, {reload: true});
+					}else if(callback.type === 'delete_error'){
+						ptm.informationDialogMessage = callback.message;
+					}
+				}, ptm);
+			}else
+			{
+				// Check if record can be deleted or if additional confirmation is needed
+				RemoteActionService.callRemoteAction("checkTestingProgramDelete", ptm.testingProgram.id, function(callback)
+				{
+					$log.info('callback', callback);
+					if(!callback || !callback.type)
+						return;
+
+					if(callback.type === 'deleted')
+					{
+						// Object deleted
+						$state.go($state.current, {}, {reload: true});
+					}else if(callback.type === 'delete_error'){
+						ptm.informationDialogMessage = callback.message;
+					}else if(callback.type === 'error')
+					{
+						ptm.informationDialogMessage = callback.message;
+						ToastService.toast("Testing Program is currently in use and cannot be deleted.", "error");
+					}
+					else if(callback.type === 'confirmation')
+					{
+						ptm.confirmDelete = true;
+						ptm.confirmationDialogMessage = callback.message;
+						ptm.confirmationDialogVisibility = true;
+					}
+
+				}, ptm);
+			}
+		};
+
+		ptm.deleteProductTest = function()
+		{
+			// remove PT from UI
+			ptm.removeProductTest(ptm.productTest);
+
+			// if PT exists -> add to list of Ids to remove from backend
+			if(ptm.productTest.id)
+				ptm.deleteProductTestIds.push(ptm.productTest.id);
+		};
+
+		ptm.removeProductTest = function(pt)
+		{
+			// remove product test from category (in UI)
+			$scope.$broadcast('deleteRow', pt);
+
+			// remove product test from included tests in group summation
+			angular.forEach(ptm.category.testGroups, function(group)
+			{
+				for(var i = 0; i &lt; group.$includedTests.length; i++){
+					if(group.$includedTests[i].key == pt.key){
+						group.$includedTests.splice(i, 1);
+						break;
+					}
+				}
+			});
+		};
+
+		ptm.deactivateProductTest = function()
+		{
+			ptm.productTest.active = false;
+			delete ptm.productTest.groupKey;
+
+			// remove product test from included tests in group summation
+			angular.forEach(ptm.category.testGroups, function(group)
+			{
+				for(var i = 0; i &lt; group.$includedTests.length; i++){
+					if(group.$includedTests[i].key == ptm.productTest.key){
+						group.$includedTests.splice(i, 1);
+						break;
+					}
+				}
+			});
+		};
+
+		ptm.deleteGroupSummation = function()
+		{
+			console.log(ptm.summationGroup);
+
+			// remove group summation from UI
+			ptm.removeGroupSummation(ptm.summationGroup);
+
+			// if group exists -> add to list of Ids to remove from backend
+			if(ptm.summationGroup.id)
+				ptm.deleteGroupTestIds.push(ptm.summationGroup.id);
+		};
+
+		ptm.removeGroupSummation = function(gs)
+		{
+			// remove group test from category (in UI)
+			Array.remove(ptm.category.testGroups,   gs.key, "key");
+
+			// remove groupKey from productTest
+			Array.remove(ptm.category.productTests, gs.key, "groupKey");
+		};
+
+		ptm.newProductTestVersion = function(pt){
+			if(!pt.$added) {
+				// make a copy of original Product Test
+				var newProductTest = angular.copy(pt);
+				newProductTest.key = ptm.generateUniqueProductTestId();
+
+				// clean some data
+				delete newProductTest.id;
+				delete newProductTest.globalId;
+				angular.forEach(newProductTest.limits, function(nv){
+					delete nv.id;
+					delete nv.globalId;
+					delete nv.productTestId;
+					delete nv.productTestGlobalId;
+				});
+				newProductTest.$added = true;
+				newProductTest.$originalTest = pt;
+				newProductTest.active = true;
+				delete newProductTest.groupKey;
+				delete newProductTest.name;
+
+				ptm.category.productTests.push(newProductTest);
+				console.log(newProductTest);
+
+				// add version information
+				newProductTest.version = pt.version ? pt.version + 1 : 2;
+				newProductTest.parentProductTestId = pt.parentProductTestId ? pt.parentProductTestId : pt.id;
+				newProductTest.parentProductTestGlobalId = pt.parentProductTestGlobalId ? pt.parentProductTestGlobalId : pt.globalId;
+
+				// deactivate the original Product Test and remove it from Group Summation if it's added
+				pt.active = false;
+				delete pt.groupKey;
+
+				// remove product test from included tests in group summation
+				angular.forEach(ptm.category.testGroups, function(group)
+				{
+					for(var i = 0; i &lt; group.$includedTests.length; i++){
+						if(group.$includedTests[i].key == pt.key){
+							group.$includedTests.splice(i, 1);
+							break;
+						}
+					}
+				});
+			} else {
+				ToastService.toast("Save the category first before attempting to create a new version of this test protocol.", "warning");
+			}
+		};
+
+		// *** ADDITIONAL COLUMNS DIALOG ***
+		ptm.openAddColumnsDialog = function(){
+			ptm.addColumnsUndo = angular.copy(ptm.columns.productTest);
+			ptm.columnsDialog.visible = true;
+			$timeout(function(){angular.element(document.querySelectorAll('#col0')).focus();}, 200);
+		};
+
+		ptm.cancelAddColumns = function(){
+			ptm.columns.productTest = ptm.addColumnsUndo;
+		};
+
+		ptm.saveAddColumns = function()
+		{
+			// count old columns shown
+			var oldColsShown = 0;
+			angular.forEach(ptm.addColumnsUndo, function(column, index) {
+				// check if it is an additional column
+				if ( index >= 2 &amp;&amp; index &lt;= 6){
+					// check if column has a name
+					if (String.isNotEmpty(column.label)){
+						oldColsShown += 1;
+					}
+				}
+			});
+
+			// check new columns for show/hide
+			var newColsShown = 0;
+			angular.forEach(ptm.columns.productTest, function(column, index)
+			{
+				// check if it is an additional column
+				if ( index >= 2 &amp;&amp; index &lt;= 6){
+					// check if column has a name
+					if (String.isNotEmpty(column.label)){
+						column.show = true;
+						newColsShown += 1;
+					} else {
+						column.show = false;
+					}
+				}
+			});
+
+			// show toast and check how many columns where added/deleted
+			var colDiff = newColsShown - oldColsShown;
+			var absDiff = Math.abs(colDiff);
+			var strDiff = absDiff > 1 ? "columns" : "column";
+			var status = "";
+			if ( colDiff > 0 ) {
+				status = "added";
+			}
+			if ( colDiff &lt; 0 ) {
+				status = "deleted";
+			}
+			if ( colDiff != 0 ) {
+				ToastService.toast( absDiff + " " + strDiff + " " + status + " successfully", "success");
+			}
+		};
+
+		ptm.updatePTAddColumns = function(category)
+		{
+			// update pt columns for each PT in category
+			//US12757
+			var existingColumns = [];
+			angular.forEach(category.productTests, function(pt, index)
+			{
+				existingColumns = pt.columns;
+				pt.columns = [];
+
+				// get each column and get the value
+				angular.forEach(ptm.columns.productTest, function(column, index)
+				{
+					// check if it is an additional column
+					if ( index >= 2 &amp;&amp; index &lt;= 6){
+						// check if column has a name
+						if (String.isNotEmpty(column.label)){
+							// set new column name
+							var auxField = "addCol" + (index - 2);
+							var newCol = {
+								name: column.label,
+								value: pt[auxField],
+								viewableOnForms: column.viewableOnForms
+							};
+							//US12757
+							if(existingColumns &amp;&amp; existingColumns[index - 2]){
+								newCol.id = existingColumns[index - 2].id;
+								newCol.globalId = existingColumns[index - 2].globalId;
+							}
+
+							pt.columns.push(newCol);
+						}
+					}
+				});
+			});
+
+		};
+
+		ptm.deleteAdditionalColumn = function(index){
+			// reset name of additional column on the UI
+			ptm.columns.productTest[index].label = "";
+		};
+
+		ptm.columnsDialog = {
+			close: ptm.cancelAddColumns,
+			actions: [ { text: "OK", click: ptm.saveAddColumns, close: true} ]
+		};
+
+		// *** ADD ADDITIONAL COLUMNS DIALOG ***
+
+		//--------------------------	Select Preferred Labs functionality	--------------------------//
+		ptm.loadSelectedList = function(testingProgramId, searchWord, limit, offset)
+		{
+			//CR-1231
+			if(testingProgramId)
+				RemoteActionService.callRemoteAction("getPreferredLabsSelected", [testingProgramId, searchWord, limit, offset], "selectedList", ptm);
+		};
+
+		ptm.loadAvailableList = function(testingProgramId, searchWord, limit, offset)
+		{
+			if(maxListLimit &amp;&amp; ptm.availableList.length >= maxListLimit)
+				return;
+			RemoteActionService.callRemoteAction("getPreferredLabsAvailable", [testingProgramId, searchWord, limit, offset], ptm.getAvailableListResult, ptm);
+		};
+
+		ptm.getAvailableListResult = function(result)
+		{
+			if(Array.isEmpty(result))
+				return ptm.availableList = [];
+
+			if(result.length > maxListLimit)
+				result.length = maxListLimit;
+
+			ptm.availableList = result;
+
+			// delete from the list of available labs the items already selected and displayed on the selected list.
+			Array.removeMultiple(ptm.availableList, ptm.selectedList, "id");
+		};
+
+		ptm.openTestsDialog = function(param){
+			// set data for cancelation
+			ptm.testGroupsUndo = angular.copy(ptm.category.testGroups);
+			ptm.productTestsUndo = angular.copy(ptm.category.productTests);
+			//
+			ptm.selectedTestGroup = param;
+			ptm.groupTitle = ptm.selectedTestGroup.name;
+			ptm.getTestAndTestClassName();
+		};
+
+		ptm.selectTest = function(el){
+			if(el.$selected){
+				if(Array.none(ptm.selectedTestGroup.$includedTests, g => g &amp;&amp; g.key == el.key)){
+					console.log('adding test to group');
+					el.groupKey = ptm.selectedTestGroup.key;
+					ptm.selectedTestGroup.$includedTests.push(el);
+				}
+			}else{
+				Array.remove(ptm.selectedTestGroup.$includedTests, el.key, 'key');
+				el.groupKey = '';
+			}
+		};
+
+		ptm.saveGroupTests = function(){
+			ptm.cleanGroupTestTableSelection();
+		};
+
+		ptm.cancelGroupTests = function(){
+			ptm.category.testGroups = ptm.testGroupsUndo;
+			ptm.category.productTests = ptm.productTestsUndo;
+			ptm.cleanGroupTestTableSelection();
+		};
+
+		ptm.cleanGroupTestTableSelection = function() {
+			angular.forEach(ptm.category.productTests, el => el.$selected = false);
+		};
+
+		ptm.openSummationLimits = function(group){
+			ptm.productTestLimitColumns = ptm.columns.summationLimit;
+
+			//initialize with 1 row if needed
+			ptm.selectedTestGroup = group;
+			ptm.groupTitle = ptm.selectedTestGroup.name;
+			if(!group.limits) group.limits = [];
+			if(group.limits[0]) ptm.unitColumn.defaultValue = group.limits[0].unit;
+			if(!group.limits.length) {
+				// initialize limit type for both tabs - DE7585
+				group.limits.push({ type: ptm.picklists.limitType[0] });
+				group.limits.push({ type: ptm.picklists.limitType[1] });
+			}
+
+			angular.forEach(group.limits, function(l) {
+				if(!l.type)
+					l.type = ptm.limitType;
+			});
+
+			//set table model = current product test limits
+			ptm.testLimits = group.limits.groupBy("type");
+			angular.forEach(ptm.picklists.limitType, function(type) {
+				if(!ptm.testLimits[type])
+					ptm.testLimits[type] = [];
+			});
+
+			// update model to show first testLimit table
+			ptm.limitType = group.limits[0].type;
+			// select first tab that has test limits
+			$scope.$broadcast('selectTab', ptm.limitType);
+
+			ptm.limitsUndo = angular.copy(group.limits);
+			ptm.summationGroup = group;
+			ptm.summationLimitDialog.visible = true;
+		};
+
+		ptm.getGroupById = function(groupKey){
+			return Array.find(ptm.category.testGroups, g => g &amp;&amp; g.id == groupKey);
+		};
+
+		ptm.getTestAndTestClassName = function(callback)
+		{
+			var classes = [];
+			var tests = [];
+			angular.forEach(ptm.category.productTests, function(pt)
+			{
+				if(pt.testId &amp;&amp; pt.classId &amp;&amp; pt.active){
+					classes.push(pt.classId);
+					tests.push(pt.testId);
+				}
+			});
+
+			//make test names unique
+			ptm.testsInUse = tests;
+			if(!callback)
+				callback = ptm.filterGroupsTests;
+
+			if(classes.length &amp;&amp; tests.length)
+				RemoteActionService.callRemoteAction("getTestAndTestClass", [tests, classes], callback, ptm);
+			else
+				ToastService.toast(validationMessages.noAvailableTests, "error");
+		};
+
+		ptm.loadTestClassesAndTestNames = function(response){
+			ptm.classAndTestNames = response;
+			angular.forEach(ptm.category.productTests, el => el.name = ptm.classAndTestNames[el.classId] + " - " + ptm.classAndTestNames[el.testId]);
+		};
+
+		ptm.filterGroupsTests = function(response)
+		{
+			ptm.classAndTestNames = response;
+			console.log('ptm.selectedTestGroup', ptm.selectedTestGroup, ptm.selectedTestGroup.key);
+
+			ptm.filteredTests = ptm.category.productTests.filter(function(el)
+			{
+				var ret = false;
+				if(el.active) {
+					if(ptm.selectedTestGroup.id &amp;&amp; el.groupKey == ptm.selectedTestGroup.id)
+						el.groupKey = ptm.selectedTestGroup.key;
+
+					if(el.classId &amp;&amp; el.testId &amp;&amp; ptm.isQuantitative(el)){
+						ret = true;
+						if(String.isNotEmpty(el.groupKey) &amp;&amp; el.groupKey !== ptm.selectedTestGroup.key &amp;&amp; el.groupKey !== ptm.selectedTestGroup.id){
+							ret = false;
+						}
+					}
+				}
+				return ret;
+			});
+
+			angular.forEach(ptm.filteredTests, function(el)
+			{
+				el.name = ptm.classAndTestNames[el.classId] + " - " + ptm.classAndTestNames[el.testId];
+				el.$selected = (ptm.selectedTestGroup &amp;&amp; ptm.selectedTestGroup.id &amp;&amp; el.groupKey === ptm.selectedTestGroup.id) || el.groupKey === ptm.selectedTestGroup.key;
+			});
+
+			if(ptm.filteredTests.length)
+				ptm.testsDialog.visible = true;
+		};
+
+		ptm.showDaysRetest = function()
+		{
+			ptm.daysBeforeRetestdays = ptm.picklists.daysPriorRetest[0];
+			ptm.daysBeforeRetestdaysCustom = 0;
+			ptm.daysBeforeRetestdaysCustom = '';
+			console.log(ptm.testingProgram.retestOption.key, ptm.daysBeforeRetestdays);
+			if(ptm.testingProgram.retestOption.key != "0")
+			{
+				ptm.showDays = true;
+				ptm.showCustomdays = false;
+			}
+			else
+				ptm.showDays = false;
+			console.log(ptm.daysBeforeRetestdays, "ptm.daysBeforeRetestdays");
+		};
+
+		ptm.customDays = function()
+		{
+			console.log(ptm.daysBeforeRetestdays.key);
+
+			if(ptm.daysBeforeRetestdays.key === "custom")
+			{
+				ptm.showCustomdays = true;
+				$timeout(function(){angular.element(document.querySelectorAll('#daysBeforeRetestdaysCustom')).focus();}, 200);
+			}
+			else
+				ptm.showCustomdays = false;
+		};
+
+		ptm.checkCustomDays = function()
+		{
+			if(ptm.daysBeforeRetestdaysCustom)
+			{
+				ptm.showCustomdays = true;
+			}
+			else
+			{
+				ptm.daysBeforeRetestdays = ptm.picklists.daysPriorRetest[0];
+				ptm.showCustomdays = false;
+			}
+		};
+
+		ptm.checkDate = function()
+		{
+			ptm.dateError = '';
+			if(ptm.testingProgram){
+				var myDate = new Date();
+				ptm.todayDate = new Date(myDate);
+				ptm.toDate = new Date(ptm.testingProgram.activeTo);
+				ptm.startDate = new Date(ptm.testingProgram.activeFrom);
+				//DE8401
+				if(ptm.startDate != 'Invalid Date' || ptm.toDate != 'Invalid Date'){
+					ptm.hideDateErrors = false;
+				}
+				ptm.todayDate.setHours(0, 0, 0, 0);
+				ptm.todayDate.setDate( ptm.todayDate.getDate() - 1 );
+
+				ptm.valid = true;
+				if(ptm.toDate &lt; ptm.todayDate) {
+					ptm.valid = false;
+				}
+				//else if(ptm.startDate &lt; ptm.todayDate) {
+				//	ptm.valid = false;
+				//}
+
+				if(ptm.startDate > ptm.toDate){
+					ptm.dateError = "'Active to' date must be later than 'Active from' date.";
+					ptm.valid = false;
+				}
+
+				if(ptm.valid){
+					ptm.dateError = '';
+				}
+			}
+			return ptm.valid;
+		};
+
+		ptm.setActive = function(program){
+			RemoteActionService.callRemoteAction("inActivePTM", program.id);
+		};
+
+		ptm.disableChecks = function(param)
+		{
+			if(!param) return;
+
+			var myDate = new Date(param.activeTo);
+			var todayDate = new Date();
+
+			if(todayDate >= myDate){
+				param.active = false;
+				return true;
+			}
+
+			return false;
+		};
+
+		ptm.cancelCloseEdit = function() {
+			if(ptm.testingProgram)
+				ptm.testingProgram = null;
+		};
+
+		ptm.filterTests = function()
+		{
+			for(var key in ptm.filters)
+				if(String.isEmpty(ptm.filters[key]))
+					delete ptm.filters[key];
+
+			if(Object.isEmpty(ptm.filters))
+				return ptm.category.productTests = ptm.allProductTests;
+
+			ptm.category.productTests = ptm.allProductTests.filter(ptm.filterTestByAttributes);
+			return ptm.filteredTests;
+		};
+
+		ptm.filterTestByAttributes = function(pt)
+		{
+			if(Object.isEmpty(ptm.filters))  return true;
+			if(Array.isEmpty(pt.attributes)) return false;
+
+			//pt attributes must match all selected filters
+			var attributesByKey = pt.attributes.indexBy("attributeKey");
+			for(var key in ptm.filters)
+				if(!ptm.matchAttribute(attributesByKey[key], ptm.filters[key]))
+					return false;
+
+			return true;
+		};
+
+		ptm.matchAttribute = function(attr, filter)
+		{
+			if(!attr) return false;
+
+			if(String.includes(attr.value, filter)) return true;
+
+			var values = String.split(filter, ";", true, true);
+			if(Array.in(attr.value, values)) return true;
+
+			return false;
+		};
+
+		ptm.init();
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

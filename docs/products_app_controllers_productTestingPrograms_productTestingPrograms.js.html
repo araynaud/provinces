@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: products/app/controllers/productTestingPrograms/productTestingPrograms.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: products/app/controllers/productTestingPrograms/productTestingPrograms.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module products/components/partnerMatchCard
+@description This is the Product Testing Program page controller for Testing program page.
+*/
+module.exports = function(ngModule)
+{
+	ngModule.controller('ProductTestingProgramsNgController', ProductTestingProgramsNgController);
+	ProductTestingProgramsNgController.$inject = ['$window', '$timeout', 'CommonUtils', 'NavigationService', 'RemoteActionService', 'ToastService'];
+	function ProductTestingProgramsNgController  ( $window,   $timeout,   CommonUtils,   NavigationService,   RemoteActionService,   ToastService )
+	{
+		var vm = this;
+		$window.productTestingProgramsNgController = vm;
+
+		vm.$onInit = function()
+		{
+			NavigationService.lightningMode = true;
+			vm.labels = window.labels;
+			vm.settings = $window.configSettings;
+			vm.productId = vm.settings.productId;
+			vm.readOnly  = true;
+			vm.toastDuration = 3000;
+			vm.loading = false;
+			vm.picklists = {};
+			vm.filteredTests = {};
+
+			vm.testingLevelHelp  = CommonUtils.getVar("applicationMessages.relationship.testingLevelHelp");
+			vm.testPreviewHelp   = CommonUtils.getVar("applicationMessages.productTest.testPreviewHelp");
+			vm.testCategoryHelp  = CommonUtils.getVar("applicationMessages.productTest.testCategoryHelp");
+			vm.testAttributeHelp = CommonUtils.getVar("applicationMessages.productTest.testAttributeHelp");
+
+			vm.objectUrl = NavigationService.objectUrl;
+			vm.fullScreen = NavigationService.getParameter("fullscreen") || !NavigationService.hasParent() || false;
+
+			vm.columns = {
+				attributes: [
+					{ field: "Attribute__c", label: "Attribute", type: "picklist", blankOption: "Select attribute", required: true, options: vm.attributes, change: vm.onAttributeChange },
+					{ field: "Attribute_Value__c", label: "Value", watchOptions: "true", type: "picklist", blankOption: "Select value", required: true, placeholder: "Enter value", modelField: "id" }
+				],
+				groupedAttributes: [
+					{ field: "attribute", label: "Attribute" },
+					{ field: "values",    label: "Values" }
+				],
+				tests: [
+					{ field: "Product_Test_Category__r.Label__c", label: "Category", sortable: true },
+					{ field: "Test_Class__r.Label__c", label: "Test Class", sortable: true },
+					{ field: "Test__r.Test_Name__c", label: "Test Name", sortable: true },
+					{ label: "Attributes", value: vm.testAttributePopover }
+					//{ field: "Product_Test_Attributes__r", label: "Attributes", type: "related", popover: vm.testAttributePopover, columns: [ { field: "Attribute__r.Name" }, { field: "Attribute_Value__c" } ] }
+				]
+
+			};
+
+			vm.loadBaseData();
+		};
+
+		vm.onAttributeChange = function(row)
+		{
+			if(!row) return;
+
+			console.log("onAttributeChange", row.Attribute__c, row.Attribute_Value__c);
+			//row.Attribute_Value__c = null;
+
+			var attr = CommonUtils.getVar(["by", "id", row.Attribute__c], vm.attributes);
+			if(attr &amp;&amp; attr.uniqueId)
+				row.Attribute_Key__c = attr.uniqueId;
+
+			var listName = CommonUtils.getVar("optionListName", attr);
+			row.$options = listName ? { Attribute_Value__c: vm.picklists[listName] } : null;
+		};
+
+		vm.initAttributeOptions = function() {
+			angular.forEach(vm.selectedTestingPrograms, program => angular.forEach(program.productTestAttributes, vm.onAttributeChange));
+		};
+
+		vm.loadBaseData = function()
+		{
+			console.log('productId', vm.productId);
+			vm.loadAttributes().then(vm.onLoadAttributes);
+			return RemoteActionService.callRemoteAction("loadSelectedTestingPrograms", [vm.productId], result => vm.selectedTestingPrograms = CommonUtils.cleanupSobject(result),  vm);
+		};
+
+		vm.loadAttributes = function()
+		{
+			if(vm.attributes)
+				return RemoteActionService.resolvePromise(vm.attributes);
+			return RemoteActionService.callRemoteAction("getProductTestAttributes");
+		};
+
+		vm.onLoadAttributes = function(result)
+		{
+			vm.attributes = result || [];
+			vm.attributes.indexBy("id", true);
+
+			if(Array.isNotEmpty(vm.columns.attributes))
+				vm.columns.attributes[0].options = result;
+
+			//load options for each picklist attribute
+			vm.optionLists = vm.attributes.distinct("optionListName", true);
+			for(var i = 0; i &lt; Array.getCount(vm.optionLists); i++)
+				vm.loadAttributeOptions(vm.optionLists[i]).then(vm.initAttributeOptions);
+		};
+
+		//entering edit mode: load Available Testing Programs
+		vm.editMode = function() {
+			vm.readOnly = false;
+			return RemoteActionService.callRemoteAction("loadAvailableTestingPrograms", [vm.productId], "availableTestingPrograms", vm);
+		};
+
+		vm.loadAttributeOptions = function(listName)
+		{
+			if(listName &amp;&amp; !vm.picklists[listName])
+				return RemoteActionService.callRemoteAction("getItemList", [listName, null], listName, vm.picklists);
+			return RemoteActionService.resolvePromise(vm.picklists[listName]);
+		};
+
+		vm.previewTests = function(programId) {
+			return RemoteActionService.callRemoteAction("getProductTests", [vm.productId, programId],
+				result => CommonUtils.setVar(["filteredTests", programId], CommonUtils.cleanupSobject(result), vm),
+				vm);
+		};
+
+		//group values by attributes
+		vm.groupAttributeValues = function(pt)
+		{
+			var attributes = pt.Product_Test_Attributes__r || pt.productTestAttributes;
+			if(Array.isEmpty(attributes)) return [];
+
+			var result = [];
+			var groupedAttr = Array.groupBy(attributes, "Attribute__r.Name");
+			angular.forEach(groupedAttr, (group, key) => result.push({ attribute: key, values: group.distinct("Attribute_Value__c", true)} ) );
+			return result;
+		};
+
+		vm.testAttributePopover = function(pt)
+		{
+			var groupedAttr = vm.groupAttributeValues(pt);
+			var result = groupedAttr.map(attr => attr.attribute + "  =  " + attr.values.join("  |  ") );
+			return result.join("\n");
+		};
+
+		vm.save = function() {
+			//do not save rows with blank attribute name or value
+			angular.forEach(vm.selectedTestingPrograms, program => program.productTestAttributes = program.productTestAttributes.filter(a => String.isNotBlank(a.Attribute__c) &amp;&amp; String.isNotBlank(a.Attribute_Value__c) ));
+			return RemoteActionService.callRemoteAction("saveSelectedTestingPrograms", [vm.productId, vm.selectedTestingPrograms], vm.onSaveProductTestingPrograms, vm)
+				.catch(vm.onSaveError);
+		};
+
+		vm.onSaveProductTestingPrograms = function(response)
+		{
+			ToastService.toast(response.message, response.status);
+			vm.loadBaseData().then(vm.initAttributeOptions);
+			vm.goBack();
+		};
+
+		vm.onSaveError = function(error)
+		{
+			console.error(error.method + ":", error.message, error);
+			vm.loading = false;
+			vm.saveError = error;
+			ToastService.toast(error.method + ": " +  error.message, "error", 0);
+		};
+
+		vm.openFrameInFullScreen = function() {
+			NavigationService.goToPage(NavigationService.currentPage, {id: vm.productId, fullscreen: true});
+		};
+
+		//reload original data if changes have been made
+		vm.goBack = function()
+		{
+			vm.readOnly = true;
+			if(vm.fullScreen &amp;&amp; NavigationService.lightningMode &amp;&amp; window.sforce)
+				return window.sforce.one.navigateToSObject(vm.productId);
+
+			vm.loadBaseData().then(vm.initAttributeOptions);
+			vm.filteredTests = {}; // clear test previews
+		};
+
+		// "1000" if all selected, or "1 of 100"
+		vm.nbSelected = function(list) {
+			if(Array.isEmpty(list)) return "";
+
+			var nbSelected = list.filter(item => item.isSelected).length;
+			if(nbSelected == list.length)
+				return nbSelected;
+
+			return nbSelected + " " + vm.labels.common.of + " " + list.length;
+		};
+
+		vm.isNoneSelected = function(list) {
+			return Array.isEmpty(list) || list.every(item => !item.isSelected);
+		};
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

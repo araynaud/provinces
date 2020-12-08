@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/services/RemoteActionFactory.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/services/RemoteActionFactory.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>module.exports = function (ngModule)
+{
+
+/** @module common/services/RemoteActionFactory
+
+@description Factory for calling Remote Action methods.
+Automatically refreshes angular $scope on server response.
+Used only via RemoteActionService.
+
+@return {Promise}
+
+@requires $q
+@requires CommonUtils
+@requires Visualforce.remoting.Manager
+*/
+
+	function truncateStrings(str, maxLen)
+	{
+		if(Array.isArray(str))
+			return str.map(arg => truncateStrings(arg, maxLen));
+
+		if(!maxLen) maxLen = 80;
+
+		if(angular.isString(str) &amp;&amp; str.length > maxLen)
+			return "[" + str.length + "] " + str.substring(0, maxLen) + "... ";
+
+		return str;
+	}
+
+	const VFR_OPTIONS = { buffer: true, escape: false, timeout: 60000 };
+
+	ngModule.factory('RemoteActionFactory', ['$q', 'CommonUtils', function ($q, CommonUtils)
+	{
+		const remoting = CommonUtils.getVar(["Visualforce", "remoting", "Manager"]);
+		if(!remoting)
+			console.warn("RemoteActionFactory:", "Visualforce.remoting.Manager not available on this page.");
+
+		return function(method, args, debug)
+		{
+			var deferred = $q.defer();
+			if(!args)
+				args = [];
+			else if(!angular.isArray(args))
+				args = [args];
+
+			args = CommonUtils.cleanupAngularObject(args, true);
+			args.unshift(method);
+
+			var startTime = new Date();
+
+			var onResult = function(result, event)
+			{
+				if(event.result != result)
+					event.result = result;
+
+				var time =  new Date() - startTime;
+
+				if(debug)
+					console.log("RemoteActionFactory: result in", time, "ms", method,
+						event.message ? "\nmessage: " + event.message : "",
+						"\n", event.result);
+
+				if(event.status)
+					deferred.resolve(event.result);
+				else
+					deferred.reject(event);
+			};
+
+			args.push(onResult);
+			args.push(VFR_OPTIONS);
+
+			remoting.invokeAction.apply(remoting, args);
+			return deferred.promise;
+		};
+	}]);
+
+	/** @module common/services/RemoteActionService
+@description Service containing functions to call Remote Action methods from angular page controllers and components
+
+@requires common/services/RemoteActionFactory
+@requires common/services/CommunUtils
+@requires $q
+
+@example
+//General use cases
+RemoteActionService.call(method, args)
+RemoteActionService.call(method, args, thenFunction)
+
+RemoteActionService.call(method, args, outputElement)
+
+RemoteActionService.call(method, args, outputElement, outputObject)
+RemoteActionService.call(method, args, outputElement, outputObject, finallyFunction)
+RemoteActionService.call(method, args, thenFunction, finallyFunction)
+
+- method = method name or namespace.controllerClass.method .
+Note: If only method name passed, the service determines automatically which class it belongs to (method names must be unique on the page for that).
+
+- args : array or arguments passed to the Remote Action. The order and Type of each argument must match the Apex Remote Action method signature.
+- thenFunction and finallyFunction = function(result) { ... }
+
+@example
+//remote action called without arguments.
+//result is not stored or processed in the service, but then, catch, finally can be used on the returned promise (see other examples below).
+RemoteActionService.callRemoteAction("getAllPicklistOptions");
+RemoteActionService.callRemoteAction("getAllPicklistOptions", []);
+
+@example
+//remote action called with 1 argument.
+//result is not stored or processed in the service, but then, catch, finally can be used on the returned promise (see other examples below).
+RemoteActionService.callRemoteAction('saveData', [ data ]);
+
+@example
+//remote action called with 2 arguments.
+//pass controller or its $scope as output object
+//Remote Action Result is stored in $scope.convertToPdfResult;
+//$scope.loading can be used in view to show progress loader
+RemoteActionService.callRemoteAction("convertToPdf", [ containerId, pdfDocument.name ], "convertToPdfResult", $scope);
+
+@example
+//pass controller or its scope as output object
+var promise = RemoteActionService.callRemoteAction('convertToPdf', args, function (result) {
+	svc.pdfContentVersionId = result;
+	// do other things ...
+}, $scope);
+
+@example
+//with promise.then
+var promise = RemoteActionService.callRemoteAction('convertToPdf', args).then(function (result)
+{
+	svc.pdfContentVersionId = result;
+	// do other things ...
+}, $scope);
+
+@example
+//with error handling
+var promise = RemoteActionService.callRemoteAction('convertToPdf', args, function (result) {
+	svc.pdfContentVersionId = result;
+});
+
+//error handler
+promise.catch(function(error) {
+	console.error("TabService.convertToPdf error", error.message, error);
+	ToastService.toast(error.message, "error", 0);
+});
+*/
+
+	ngModule.service('RemoteActionService', RemoteActionService);
+	RemoteActionService.$inject = ['$q', 'RemoteActionFactory', 'CommonUtils'];
+	function RemoteActionService  ( $q,   RemoteActionFactory,   CommonUtils )
+	{
+		var svc = window.RemoteActionService = this;
+		svc.debug = false;
+
+		svc.init = function()
+		{
+			svc.actions = CommonUtils.getVar("$VFRM.last.actions");
+			if(!svc.actions)
+				console.warn("RemoteActionService:", "No Remote Actions available on this page.");
+
+			svc.controllerClassName = "";
+			svc.namespace = "";
+			svc.history = [];
+			svc.controllerClasses = svc.listRemoteActionControllers(true);
+			svc.controllerClasses.byName = svc.controllerClasses.indexBy(svc.getSimpleName);
+			if(Array.isNotEmpty(svc.controllerClasses))
+				svc.setControllerClassName(svc.controllerClasses[0]);
+
+			svc.remoteActions = svc.listRemoteActionNames("*", true);
+			svc.remoteActions.byName = svc.remoteActions.indexBy(svc.getSimpleName);
+		};
+
+		svc.setController = svc.setControllerClassName = function(className)
+		{
+			svc.controllerClassName = className;
+			svc.namespace = className.substringBefore(".", false, true);
+		};
+
+		svc.getController = svc.getControllerClassName = function(className)
+		{
+			if(String.isEmpty(className))
+				className = svc.controllerClassName;
+
+			if(!className.startsWith(svc.namespace))
+				className = svc.namespace + "." + className;
+
+			return className;
+		};
+
+		/** @method listRemoteActions
+		@description list available remote actions on current page
+		@param className {optional|string} className or "*" for all classes
+
+		@return {object|object[]} remoteAction[] for 1 class
+		&lt;br/>or Object { className: remoteAction[] } for all classes
+		&lt;br/>
+		remoteAction = {
+			"name": "deleteAnswerDocumentReference",
+			"len": 1,
+			"ns": "arthurdev1",
+			"ver": 36,
+			"csrf": "VmpFPSxNakF4T0Mwd01pMHlNRlF3TmpveE1Ub3dPQzQzTnpSYSxGeHpYQXNHenl5YmhUNXdITTNDLWZPLE9HTmlaV1Zo"
+		}
+		*/
+
+		svc.listRemoteActions = function(className)
+		{
+			if(className === "*")
+				return svc.actions;
+
+			className = svc.getControllerClassName(className);
+
+			var actions = CommonUtils.getVar([className, "ms"], svc.actions, []);
+			return actions;
+		};
+
+		/** @method listRemoteActionControllers
+		@description class names of available remote actions on current page
+		@param withPrefix {optional|boolean}  true: results with namespace.className, else: className only
+
+		@return {string[]} - list of class names (with or witout namespace prefix)
+
+		@example
+		//class names only
+		RemoteActionService.listRemoteActionControllers()
+		[ "FileUploadController", "FormViewController", "LabSelectionUtil" ]
+
+		@example
+		//with namespace prefix
+		RemoteActionService.listRemoteActionControllers(true)
+		[ "arthurdev1.FileUploadController", "arthurdev1.FormViewController", "arthurdev1.LabSelectionUtil" ]
+		*/
+
+		svc.listRemoteActionControllers = function(withPrefix)
+		{
+			if(!svc.actions) return [];
+
+			var classNames = Object.keys(svc.actions);
+			if(withPrefix)
+				return classNames;
+
+			return classNames.map(c => c.substringAfter(".", true, true));
+		};
+
+		/** @method listRemoteActionNames
+		@description list method names of available remote actions on current page, with namespace.class prefix or not
+
+		@param className  {optional|string} className or "*" for all classes
+		@param withPrefix {optional|boolean} true: results with namespace.class prefix / else: method name only
+
+		@return {string[]} - list of remote action names ()
+
+		@example
+		//remote actions from default controller class
+		RemoteActionService.listRemoteActionNames()
+		[ "closeSelectedTasks", "deleteListView", ... ]
+
+		@example
+		//remote actions from specified class
+		RemoteActionService.listRemoteActionNames("RelationshipUtil")
+		[ "addNewTag","cancelButtonActionForTags", ...]
+
+		@example
+		//remote actions from specified class with prefix
+		RemoteActionService.listRemoteActionNames("RelationshipUtil", true)
+		[ "arthurdev1.RelationshipUtil.addNewTag", "arthurdev1.RelationshipUtil.cancelButtonActionForTags", ... ]
+
+		@example
+		//remote actions from all classes with prefix
+		RemoteActionService.listRemoteActionNames("*", true)
+		[ "arthurdev1.TaskListController.closeSelectedTasks", "arthurdev1.RelationshipUtil.addNewTag", ... ]
+		*/
+
+		svc.listRemoteActionNames = function(className, withPrefix)
+		{
+			var actions = svc.listRemoteActions(className);
+			if(Array.isEmpty(actions)) return [];
+
+			if(angular.isArray(actions) &amp;&amp; !withPrefix)
+				return actions.distinct("name");
+
+			if(angular.isArray(actions))
+			{
+				className = svc.getControllerClassName(className);
+				return actions.map(action => svc.getFullMethodName(className, action.name) );
+			}
+
+			var allActions = [];
+			if(withPrefix)
+				angular.forEach(actions, function(v, key)
+				{
+					if(Array.isNotEmpty(v.ms))
+					{
+						var actionNames = v.ms.map(action => svc.getFullMethodName(key, action.name));
+						allActions = allActions.concat(actionNames);
+					}
+				});
+			else
+				angular.forEach(actions, (v, k) => allActions = allActions.concat(v.ms.distinct("name")) );
+
+			return allActions;
+		};
+
+		//get full method name with namespace.className.method
+		svc.getFullMethodName = function(className, method)
+		{
+			if(String.isEmpty(className) || method.startsWith(className))
+				return method;
+
+			if(method.indexOf(".") == -1)
+				return className + "." + method;
+
+			return method;
+		};
+
+		svc.getSimpleName = function(c)
+		{
+			return String.substringAfter(c, ".", true, true);
+		};
+
+		svc.setOutputObject = function(obj)
+		{
+			svc.outputObject = obj || svc;
+		};
+		svc.setOutputObject();
+
+		/** @method callRemoteAction
+		@description  call a remote action with arguments and process its result.&lt;br/>
+		Can also be used as &lt;b>RemoteActionService.call&lt;/b>.
+
+		@param method {string} method name. If only method name passed, the service determines which class it belongs to (method names must be unique on the page for that).
+		@param args {Array} arguments passed to the Remote Action method
+		@param outputElement {optional|string|function} string: variable name to store result in outputObject[outputElement] &lt;br/> function(result): do something with result (like promise.then)
+		@param outputObject  {optional|string} where to store result (by default: this RemoteActionService). Also stores .loading variable indicating if action is in progress
+		@param after {optional|string} function called after result is processed (Promise.finally function)
+
+		@return {Promise} Promise from RemoteActionFactory / $q. Can be used with .then(), .catch() and .finally() from outside this service.
+		*/
+
+		svc.call = svc.callRemoteAction = function(method, args, outputElement, outputObject, after)
+		{
+			if(String.isEmpty(method))
+				return console.warn("RemoteActionService: no method ", method);
+
+			if(angular.isFunction(outputObject))
+			{
+				after = outputObject;
+				outputObject = null;
+			};
+
+			if(!outputObject)
+				outputObject = svc.outputObject;
+
+			//pass method = methodName if controllerClassName has been set before.
+			//or pass method = namespace.className.methodName if using different controller class.
+			var fullMethodName = method;
+			if(!method.includes("."))
+				fullMethodName = CommonUtils.getVar("remoteActions.byName." + method, svc);
+
+			//if(String.isEmpty(fullMethodName) &amp;&amp; svc.controllerClassName)
+			//    fullMethodName = svc.controllerClassName + "." + method;
+
+			if(String.isEmpty(fullMethodName))
+				return console.error("RemoteActionService: method not found ", method);
+
+			if(svc.debug) {
+				let argsShort = truncateStrings(args, 100);
+				console.log("RemoteActionService.call(", '"' + method + '",', angular.toJson(argsShort), ")");
+			}
+
+			outputObject.loading = true;
+
+			var promise = RemoteActionFactory(fullMethodName, args, svc.debug);
+			var startTime = new Date();
+
+			promise.then(function(event)
+			{
+				outputObject.loading = false;
+				var result = event &amp;&amp; event.hasOwnProperty("result") ? event.result : event;
+				if(event &amp;&amp; event.result &amp;&amp; !event.status)
+				{
+					outputObject.$error = true;
+					result.$error = true;
+				}
+				outputObject.status = event &amp;&amp; event.message;
+
+				if(svc.debug) {
+					svc.last = { method: method, args: args, result: result, message: outputObject.status, startTime: startTime, endTime: new Date() };
+					svc.last.time = svc.last.endTime - startTime;
+					svc.history.unshift(svc.last);
+				}
+
+				//store or process result
+				if(angular.isFunction(outputElement))
+					outputElement(result);
+				else if(outputElement)
+					CommonUtils.setVar(outputElement, result, outputObject);
+			});
+
+			if(angular.isFunction(after))
+				promise.finally(after);
+
+			return promise;
+		};
+
+		//recall past remote action with its parameters
+		svc.recall = function(action)
+		{
+			if(!isNaN(action)) action = svc.history[action];
+			if(!action)        action = svc.last;
+			if(action)
+				return svc.call(svc.last.method, svc.last.args);
+		};
+
+		/** @method callControllerRemoteAction
+		@description call a remote action from a specificed controller, then same as {@link module:common/services/RemoteActionService~callRemoteAction|callRemoteAction}
+
+		@param controller {string} controller class name
+		@param method {string} method name
+		@param args {Array} arguments passed to the Remote Action method
+		@param outputElement {optional|string|function} string: variable name to store result in outputObject[outputElement] &lt;br/> function(result): do something with result (like promise.then)
+		@param outputObject {optional|string} outputObject
+		@param after {optional|string} function called after result is processed (promise.finally function)
+
+		@return {Promise} Promise from RemoteActionFactory / $q
+		*/
+		svc.callControllerRemoteAction = function(controller, method, args, outputElement, outputObject, after)
+		{
+			if(String.isNotEmpty(controller))
+				method = controller + "." + method;
+			return svc.callRemoteAction(method, args, outputElement, outputObject, after);
+		};
+
+		/** @method callMultipleActions
+		@description Call multiple remote actions in sequence. When each action completes, call next one.
+		@param {Object[]}  Array of remote action arguments&lt;br/>[ { method: "name", args: [...], outputElement: "result", outputObject: vm }, {...} ]
+		@param {optional|number} index: which action to start with (by default: 0)
+
+		@return promise for the 1st remote action call
+
+		@see module:common/services/RemoteActionService~callRemoteAction
+		*/
+		svc.callMultipleActions = function(actions, index)
+		{
+			if(!index) index = 0;
+			var action = actions[index];
+			var promise = svc.call(action.method, action.args, action.outputElement, action.outputObject);
+			//call next action
+			promise.finally(function () {
+				svc.callMultipleActions(actions, index + 1);
+			});
+
+			//in case of error: stop or call next action ?
+			promise.catch(function () {
+				svc.callMultipleActions(actions, index + 1);
+			});
+
+			return promise;
+		};
+
+		/** @method resolvePromise
+		@description  Create a new promise, resolved promise instantly with data.
+		Useful for returning instantly without calling an action in code expecting promises.
+
+		@param data {any|Object} result of the promise.
+		*/
+		svc.resolvePromise = function(data)
+		{
+			const deferred = $q.defer();
+			deferred.resolve(data);
+			return deferred.promise;
+		};
+
+		svc.rejectPromise = function(data)
+		{
+			const deferred = $q.defer();
+			deferred.reject(data);
+			return deferred.promise;
+		};
+
+		svc.init();
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

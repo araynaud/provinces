@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: partners/app/components/partnerAdd/partnerAdd.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: partners/app/components/partnerAdd/partnerAdd.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module partners/components/partnerAdd
+@description This is the Trading partner search page controller for Trading Partners search page.
+
+@param main            {object[]}                = main page controller
+
+*/
+
+module.exports = function (ngModule)
+{
+	ngModule.component('partnerAdd', {
+		bindings: { main: '=', countries: '=?' },
+		template: require('./partnerAdd.html'),
+		controllerAs: 'avm',
+		controller: PartnerAddController
+	});
+
+	PartnerAddController.$inject = ['$element', '$timeout', '$scope'];
+	function PartnerAddController($element, $timeout, $scope)
+	{
+		var avm = this;
+		avm.main.partnerAdd = avm;
+		avm.stencilImage = true;
+
+		avm.$onInit = function()
+		{
+			avm.typesList = [];
+			avm.newPartner = {};
+			avm.loadIdTypes();
+			avm.loadPartnerTypes();
+			avm.loadUURelationshipStatuses();
+			avm.country = null;
+
+			avm.newPartner = {
+				name: "",
+				idType: "",
+				universalId: "",
+				icixId: "",
+				address: {
+					street: "",
+					city: "",
+					state: "",
+					postCode: "",
+					country: "",
+					address2: "",
+					address3: ""
+				},
+				email: "",
+				phone: "",
+				fax: "",
+				uniId: []
+			};
+
+			avm.stencilImage = false;
+		};
+
+		avm.checkIdType = function() {
+			if(!avm.newPartner.idType)
+				avm.newPartner.universalId = '';
+		};
+
+		avm.loadIdTypes = function() {
+			avm.main.callRemoteAction("getAllUniversalIdTypes", [], "typesList");
+		};
+
+		avm.loadPartnerTypes = function() {
+			avm.main.callRemoteAction("getUURelationshipTypesWithLabels", [], "tradingPartnerRelationshipTypes");
+		};
+
+		avm.loadUURelationshipStatuses = function() {
+			avm.main.callRemoteAction("getUURelationshipStatusesWithLabels", [], "tradingPartnerRelationshipStatuses");
+		};
+
+		avm.searchPartners = function()
+		{
+			avm.main.drawerId = false;
+			avm.newPartner.address.country = avm.country == null ? '' : avm.country.code;
+			avm.newPartner.uniId = avm.uniId;
+			avm.main.searchPartnersInOtherOrgs(avm.newPartner);
+		};
+
+		//piyush change
+		avm.countrydropdown = function()
+		{
+			avm.countries = [
+				{name: 'Afghanistan', code: 'AF'},
+				{name: 'Aland Islands', code: 'AX'},
+				{name: 'Albania', code: 'AL'},
+				{name: 'Algeria', code: 'DZ'},
+				{name: 'Andorra', code: 'AD'},
+				{name: 'Angola', code: 'AO'},
+				{name: 'Anguilla', code: 'AI'},
+				{name: 'Antarctica', code: 'AQ'},
+				{name: 'Antigua and Barbuda', code: 'AG'},
+				{name: 'Argentina', code: 'AR'},
+				{name: 'Armenia', code: 'AM'},
+				{name: 'Aruba', code: 'AW'},
+				{name: 'Australia', code: 'AU'},
+				{name: 'Austria', code: 'AT'},
+				{name: 'Azerbaijan', code: 'AZ'},
+				{name: 'Bahamas', code: 'BS'},
+				{name: 'Bahrain', code: 'BH'},
+				{name: 'Bangladesh', code: 'BD'},
+				{name: 'Barbados', code: 'BB'},
+				{name: 'Belarus', code: 'By'},
+				{name: 'Belgium', code: 'BE'},
+				{name: 'Belize', code: 'BZ'},
+				{name: 'Benin', code: 'BJ'},
+				{name: 'Bermuda', code: 'BM'},
+				{name: 'Bhutan', code: 'BT'},
+				{name: 'Bolivia, Plurinational State of', code: 'BO'},
+				{name: 'Bonaire, Sint Eustatius and Saba', code: 'BQ'},
+				{name: 'Bosnia and Herzegovina', code: 'BA'},
+				{name: 'Botswana', code: 'BW'},
+				{name: 'Bouvet Island', code: 'BV'},
+				{name: 'Brazil', code: 'BR'},
+				{name: 'British Indian Ocean Territory', code: 'IO'},
+				{name: 'Brunei Darussalam', code: 'BN'},
+				{name: 'Bulgaria', code: 'BG'},
+				{name: 'Burkina Faso', code: 'BF'},
+				{name: 'Burundi', code: 'BI'},
+				{name: 'Cambodia', code: 'KH'},
+				{name: 'Cameroon', code: 'CM'},
+				{name: 'Canada', code: 'CA'},
+				{name: 'Cape Verde', code: 'CV'},
+				{name: 'Cayman Islands', code: 'KY'},
+				{name: 'Central African Republic', code: 'CF'},
+				{name: 'Chad', code: 'TD'},
+				{name: 'Chile', code: 'CL'},
+				{name: 'Christmas Island', code: 'CX'},
+				{name: 'Congo, the Democratic Republic of the', code: 'CD'},
+				{name: 'Cook Islands', code: 'Ck'},
+				{name: 'Costa Rica', code: 'CR'},
+				{name: 'Croatia', code: 'HR'},
+				{name: 'Cuba', code: 'CU'},
+				{name: 'Curaçao', code: 'CW'},
+				{name: 'Cyprus', code: 'CY'},
+				{name: 'Czech Republic', code: 'CZ'},
+				{name: 'Denmark', code: 'DK'},
+				{name: 'Djibouti', code: 'DJ'},
+				{name: 'Dominica', code: 'BM'},
+				{name: 'Dominican Republic', code: 'DO'},
+				{name: 'Ecuador', code: 'EC'},
+				{name: 'Egypt', code: 'EG'},
+				{name: 'El Salvador', code: 'SV'},
+				{name: 'Equatorial Guinea', code: 'GQ'},
+				{name: 'Eritrea', code: 'ER'},
+				{name: 'Estonia', code: 'EE'},
+				{name: 'Ethiopia', code: 'ET'},
+				{name: 'Falkland Islands (Malvinas)', code: 'FK'},
+				{name: 'Gabon', code: 'GA'},
+				{name: 'Gambia', code: 'GM'},
+				{name: 'Georgia', code: 'GE'},
+				{name: 'Germany', code: 'DE'},
+				{name: 'Ghana', code: 'GH'},
+				{name: 'Gibraltar', code: 'GI'},
+				{name: 'Greece', code: 'GR'},
+				{name: 'Greenland', code: 'GL'},
+				{name: 'Grenada', code: 'GD'},
+				{name: 'Guadeloupe', code: 'GP'},
+				{name: 'Guatemala', code: 'GT'},
+				{name: 'Guernsey', code: 'GG'},
+				{name: 'Guinea', code: 'GN'},
+				{name: 'Guinea-Bissau', code: 'GW'},
+				{name: 'Guyana', code: 'GY'},
+				{name: 'Haiti', code: 'HT'},
+				{name: 'Heard Island and McDonald Islands', code: 'HM'},
+				{name: 'Holy See (Vatican City State)', code: 'VA'},
+				{name: 'Honduras', code: 'HN'},
+				{name: 'Hungary', code: 'HU'},
+				{name: 'Iceland', code: 'IS'},
+				{name: 'India', code: 'IN'},
+				{name: 'Indonesia', code: 'ID'},
+				{name: 'Iran, Islamic Republic of', code: 'IR'},
+				{name: 'Iraq', code: 'IQ'},
+				{name: 'Ireland', code: 'IE'},
+				{name: 'Isle of Man', code: 'IM'},
+				{name: 'Israel', code: 'IL'},
+				{name: 'Jamaica', code: 'JM'},
+				{name: 'Japan', code: 'JP'},
+				{name: 'Jersey', code: 'JE'},
+				{name: 'Jordan', code: 'JO'},
+				{name: 'Kazakhstan', code: 'KZ'},
+				{name: 'Kenya', code: 'KE'},
+				{name: 'Kiribati', code: 'KI'},
+				{name: 'Korea, Republic of', code: 'KR'},
+				{name: 'Kuwait', code: 'KW'},
+				{name: 'Kyrgyzstan', code: 'KG'},
+				{name: 'Latvia', code: 'LV'},
+				{name: 'Lebanon', code: 'LB'},
+				{name: 'Lesotho', code: 'LS'},
+				{name: 'Liberia', code: 'LR'},
+				{name: 'Libya', code: 'LY'},
+				{name: 'Liechtenstein', code: 'LI'},
+				{name: 'Lithuania', code: 'LT'},
+				{name: 'Luxembourg', code: 'LU'},
+				{name: 'Macao', code: 'MO'},
+				{name: 'Madagascar', code: 'MG'},
+				{name: 'Malawi', code: 'MW'},
+				{name: 'Malaysia', code: 'MY'},
+				{name: 'Maldives', code: 'MV'},
+				{name: 'Maldives', code: 'MV'},
+				{name: 'Mali', code: 'ML'},
+				{name: 'Malta', code: 'MT'},
+				{name: 'Martinique', code: 'MQ'},
+				{name: 'Mauritania', code: 'MR'},
+				{name: 'Mauritius', code: 'MU'},
+				{name: 'Mayotte', code: 'YT'},
+				{name: 'Mexico', code: 'MX'},
+				{name: 'Monaco', code: 'MC'},
+				{name: 'Mongolia', code: 'MN'},
+				{name: 'Montenegro', code: 'ME'},
+				{name: 'Montserrat', code: 'MS'},
+				{name: 'Morocco', code: 'MA'},
+				{name: 'Mozambique', code: 'MZ'},
+				{name: 'Myanmar', code: 'MM'},
+				{name: 'Namibia', code: 'NA'},
+				{name: 'Nauru', code: 'NR'},
+				{name: 'Nepal', code: 'NP'},
+				{name: 'Netherlands', code: 'NL'},
+				{name: 'New Caledonia', code: 'NC'},
+				{name: 'New Zealand', code: 'NZ'},
+				{name: 'Nicaragua', code: 'NI'},
+				{name: 'Niger', code: 'NE'},
+				{name: 'Nigeria', code: 'NG'},
+				{name: 'Niue', code: 'NU'},
+				{name: 'Norfolk Island', code: 'NF'},
+				{name: 'Norway', code: 'NO'},
+				{name: 'Oman', code: 'OM'},
+				{name: 'Pakistan', code: 'PK'},
+				{name: 'Palestine', code: 'PS'},
+				{name: 'Panama', code: 'PA'},
+				{name: 'Papua New Guinea', code: 'PG'},
+				{name: 'Paraguay', code: 'PY'},
+				{name: 'Peru', code: 'PE'},
+				{name: 'Philippines', code: 'PH'},
+				{name: 'Pitcairn', code: 'PN'},
+				{name: 'Poland', code: 'PL'},
+				{name: 'Portugal', code: 'PT'},
+				{name: 'Qatar', code: 'QT'},
+				{name: 'Reunion', code: 'RE'},
+				{name: 'Romania', code: 'RO'},
+				{name: 'Russian Federation', code: 'RU'},
+				{name: 'Rwanda', code: 'RW'},
+				{name: 'Saint Barthélemy', code: 'BL'},
+				{name: 'Saint Kitts and Nevis', code: 'KN'},
+				{name: 'Saint Lucia', code: 'LC'},
+				{name: 'Saint Pierre and Miquelon', code: 'PM'},
+				{name: 'Samoa', code: 'WS'},
+				{name: 'San Marino', code: 'SM'},
+				{name: 'Sao Tome and Principe', code: 'ST'},
+				{name: 'Saudi Arabia', code: 'SA'},
+				{name: 'Senegal', code: 'SN'},
+				{name: 'Serbia', code: 'RS'},
+				{name: 'Seychelles', code: 'SC'},
+				{name: 'Sierra Leone', code: 'SL'},
+				{name: 'Singapore', code: 'SG'},
+				{name: 'Slovakia', code: 'SK'},
+				{name: 'Slovenia', code: 'SI'},
+				{name: 'Solomon Islands', code: 'SB'},
+				{name: 'Somalia', code: 'SO'},
+				{name: 'South Africa', code: 'ZA'},
+				{name: 'South Georgia and the South Sandwich Islands', code: 'GS'},
+				{name: 'South Sudan', code: 'SS'},
+				{name: 'Spain', code: 'ES'},
+				{name: 'Sri Lanka', code: 'LK'},
+				{name: 'Sudan', code: 'SD'},
+				{name: 'Suriname', code: 'SR'},
+				{name: 'Svalbard and Jan Mayen', code: 'SJ'},
+				{name: 'Swaziland', code: 'SZ'},
+				{name: 'Syrian Arab Republic', code: 'SY'},
+				{name: 'Taiwan', code: 'TW'},
+				{name: 'Togo', code: 'TG'},
+				{name: 'Tokelau', code: 'TK'},
+				{name: 'Tonga', code: 'TO'},
+				{name: 'Trinidad and Tobago', code: 'TT'},
+				{name: 'Tunisia', code: 'TN'},
+				{name: 'Turkey', code: 'TR'},
+				{name: 'Turkmenistan', code: 'TM'},
+				{name: 'Turks and Caicos Islands', code: 'TC'},
+				{name: 'Tuvalu', code: 'TV'},
+				{name: 'Uganda', code: 'UG'},
+				{name: 'Ukraine', code: 'UA'},
+				{name: 'United Arab Emirates', code: 'AE'},
+				{name: 'United Kingdom', code: 'GB'},
+				{name: 'United States', code: 'US'},
+				{name: 'Uruguay', code: 'UY'},
+				{name: 'Uzbekistan', code: 'UZ'},
+				{name: 'Vanuatu', code: 'VU'},
+				{name: 'Viet Nam', code: 'VN'},
+				{name: 'Wallis and Futuna', code: 'WF'},
+				{name: 'Western Sahara', code: 'EH'},
+				{name: 'Yemen', code: 'YE'},
+				{name: 'Zambia', code: 'ZM'},
+				{name: 'Zimbabwe', code: 'ZW'}
+			];
+		};
+
+		avm.uniId = [];
+
+		avm.uniId.push({type: "", value: ""});
+
+		avm.removeIds = function(param) {
+			avm.uniId.splice(avm.uniId.indexOf(param), 1);
+		};
+
+		avm.addIds = function()	{
+			avm.uniId.push({type: "", value: ""});
+		};
+
+		avm.addInfo = false;
+
+		avm.addInfoclick = function() {
+			avm.addInfo = !avm.addInfo;
+		};
+	}; //end PartnerAddController
+
+	ngModule.directive('phoneNumber', function()
+	{
+		function link(scope, element, attributes)
+		{
+			scope.$watch('number', function(value, oldValue)
+			{
+				scope.number = ngModule.formatNumber(value);
+			});
+		}
+
+		return {
+			link: link,
+			restrict: 'E',
+			scope: {
+				placeholder: '@',
+				number: '='
+			},
+			template: '&lt;input ng-model="number" class="slds-input slds-m-top--xx-small" type="text" class="phonenumber" placeholder="{{placeholder}}"/>'
+		};
+	});
+
+	ngModule.formatNumber = function (number)
+	{
+		if (!number) return '';
+
+		number = String(number).replace(/[^0-9]+/g, '');
+
+		// Will return formattedNumber.
+		// If phonenumber isn't longer than an area code, just show number
+		var formattedNumber = number;
+
+		// if the first character is '1', strip it out and add it back
+		var c = (number[0] == '1') ? '1 ' : '';
+		number = number[0] == '1' ? number.slice(1) : number;
+
+		// # (###) ###-#### as c (area) front-end
+		var area = number.substring(0, 3);
+		var front = number.substring(3, 6);
+		var end = number.substring(6, 10);
+
+		if (front)  formattedNumber = (c + "(" + area + ") " + front);
+		if (end)    formattedNumber += ("-" + end);
+		return formattedNumber;
+	};
+	ngModule.filter('formatNumber', function() { return ngModule.formatNumber; });
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

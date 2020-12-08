@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: products/app/controllers/FindProduct/FindProduct.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: products/app/controllers/FindProduct/FindProduct.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module products/components/FindProduct
+@description This is the Find Product controller for find product page.
+
+*/
+module.exports = function(ngModule)
+{
+	ngModule.controller('FindProduct', FindProductCtrl);
+	FindProductCtrl.$inject = ['$window', '$timeout', 'RemoteActionService', 'NavigationService'];
+	function FindProductCtrl  ( $window,   $timeout,   RemoteActionService,   NavigationService )
+	{
+		var vm = this;
+		$window.findProductCtrl = this;
+
+		var findProductControllerMapper = $window.findProductControllerMapper.remoteActions;
+		var relationshipUtilMapper = $window.relationshipUtilMapper.remoteActions;
+		vm.sObjectLink = NavigationService.objectUrl;
+		vm.pageUrl = NavigationService.pageUrl;
+
+		vm.init = function()
+		{
+			vm.greyed                   = false;
+			vm.cancelButtonText         = 'Cancel';
+			vm.stencilImage             = true;
+			vm.stencilSearch            = true;
+			vm.disableCreateBtn         = true;
+			vm.imageDir                 = $window.sf_design_system.imageDir;
+			vm.configSettings           = $window.configSettings;
+
+			vm.filter                   = vm.configSettings.filter;
+			vm.permissionOptions        = vm.configSettings.permissionOptions;
+			vm.currentUbeId             = vm.configSettings.currentUbeId;
+			vm.searchlimit              = vm.configSettings.searchlimit;
+
+			vm.result = '';
+			vm.selectedResult = {};
+			vm.productSearchResult = {};
+			vm.productSearchResult.items = [];
+			vm.partnerSearchResults = [];
+
+			vm.searchTradingPartners = [];
+			vm.search = {};
+			vm.search.SearchTradingPartner = {};
+			vm.search.SearchTermTradingPartner = '';
+			vm.search.SearchTerm = '';
+			vm.search.filter = 0;
+			vm.searchPattern = /[^a-z0-9-\!\@\#\$\%\^\&amp;\*\(\)\_\+\-\=\[\]\{\}\;\'\:\|\,\.\&lt;\>\/ ]+/i;
+
+			vm.product = {};
+			vm.product.universalIds = [];
+
+			vm.startProductSearchForm = true;
+			vm.SearchTermTradingPartnerVisible = true;
+
+			vm.modalPartnerVisibility = false;
+			vm.modalProductVisibility = false;
+			vm.modalProductPermissionsVisibility = false;
+			vm.createNewProduct = false;
+			vm.openNewProductPagePopup = false;
+
+			vm.modalDialogVisibility = false;
+			vm.modalConfirmationDialogVisibility = false;
+			vm.modalDialogText = '';
+			vm.modalTitle = 'Success';
+			vm.modalDialogRedirect = '';
+			vm.modalShowBtnClose = false;
+			vm.modalShowBtnYes = false;
+			vm.modalShowBtnNo = false;
+
+			vm.confirmationDialogActions = [
+				{ text: "No", click: vm.showError, close: true },
+				{ text: "Yes", click:  vm.goToRelationship, close: true }
+			];
+
+			vm.errorTradingPartnerRelationship = '';
+			vm.errorProductRelationship = '';
+			vm.errorProduct = '';
+
+			vm.cleanSelectedObjects();
+			if(vm.permissionOptions)
+				vm.productRelationsipPermissionsOption = vm.permissionOptions[0];
+			vm.loadBaseData();
+
+			vm.headerActions = [
+				{text: "Create Product", click: vm.productCreateShowModal, disable: () => vm.disableCreateBtn }
+			];
+
+			vm.productTabs = [
+				{ title: "Products I can connect to",   tooltip: "Products I can connect to"},
+				{ title: "Connected Products",          tooltip: "Connected Products" }
+			];
+
+			vm.productSearchResultColumns = [
+				{ field: "searchItem.productName", label: "Product", sortable: true, click: vm.goToProduct, classes: product => product &amp;&amp; product.productSFId ? "bold" : "bold non-clickable"},
+				{ field: "searchItem.uniqueIdentificationNumbers", label: "IDs", sortable: true },
+				{ field: "searchItem.uniqueBusinessEntityName", label: "Trading Partner", sortable: true, click: vm.goToTradinngPartner, classes: product => product &amp;&amp; product.ubeSFId ? "bold" : "non-clickable"},
+				{ field: "searchItem.status", label: "Status", sortable: true },
+				{ field: "searchItem.type", label: "Type",  sortable: true },
+				{ type: "button", buttonClasses: "slds-button--brand small-button", align: "center", text: p => p.isTradingPartnerConnected ? "Connect to product" : "Request to Connect", click: vm.connectToProductOrPartner }
+			];
+
+			vm.productConnectedColumns = [
+				{ field: "searchItem.productName", label: "Product", sortable: true, click: vm.goToProduct, classes: product => product &amp;&amp; product.productSFId ? "bold" : "bold non-clickable"},
+				{ field: "searchItem.uniqueIdentificationNumbers", label: "IDs", sortable: true },
+				{ label: "Trading Partner", sortable: true,
+					value: p => p.searchItem.parentRecord ? p.searchItem.parentRecord.uniqueBusinessEntityName : "None"
+				},
+				{ label: "Status", sortable: true,
+					value: p => p.searchItem.parentRecord ? p.searchItem.parentRecord.status : "None"
+				},
+				{ label: "Type",  sortable: true,
+					value: p => p.searchItem.parentRecord ? p.searchItem.parentRecord.type : "None"
+				},
+				{ field: "searchItem.status", label: "My Relationship Status", sortable: true,
+					style: { backgroundColor: "#faffbd", borderLeft: "2px solid #d8dde6", paddingLeft: "20px" }
+				},
+				{ field: "searchItem.type", label: "My Relationship Type",  sortable: true, style: { backgroundColor: "#faffbd"} }
+			];
+
+			window.addEventListener("message", vm.receiveMessage, false);
+			$timeout(() => vm.stencilImage = false, 1000);
+		}; //end init
+
+		vm.receiveMessage = function(event) {
+			vm.orgDomain = event.origin;
+			vm.message = event.data;
+		};
+
+		/////////////// call remote action on controller
+		vm.callRemoteAction = function(method, args, outputElement) {
+			return RemoteActionService.callRemoteAction(method, args, outputElement, vm);
+		};
+
+		/////////////// remote action methods
+		vm.loadBaseData = function() {
+			vm.getProductUniversalIdTypes();
+			vm.getNonUniversalIdTypes();
+			vm.getTags();
+			//vm.getAttributes();
+			vm.getTradingPartnerRelationshipNonUniversalIds();
+			vm.getTradingPartnerRelationshipTags();
+			vm.getTradingPartnerRelationshipStatuses();
+			vm.getTradingPartnerRelationshipTypes();
+		};
+
+		/////////////// Product Relationship Details Modal Methods
+		vm.getProductUniversalIdTypes = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getProductUniversalIds,                      [], "productUniversalIdTypes");
+		};
+
+		vm.getNonUniversalIdTypes = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getUPRelationshipNonUniversalIds,            [], "nonUniversalIdTypes");
+		};
+
+		vm.getTags = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getUPRelationshipTags,                       [], "tags");
+		};
+
+		vm.getRelationshipTypes = function( selectedProductHubId, selectedTardingPartnerId, selectedType ) {
+			vm.callRemoteAction(relationshipUtilMapper.getAvailableUPRelationshipTypes, [ selectedProductHubId ? selectedProductHubId : null, selectedTardingPartnerId ? selectedTardingPartnerId : null, selectedType ? selectedType : null ], "relationshipTypes");
+		};
+
+		/////////////// Trading Partner Relationship Details Modal Methods
+		vm.addTradingPartnerRelationshipId = function() {
+			if(!vm.selectedTradingPartnerRelationship.nonUniversalIds)
+				vm.selectedTradingPartnerRelationship.nonUniversalIds = [];
+			vm.selectedTradingPartnerRelationship.nonUniversalIds.push({});
+		};
+
+		vm.removeTradingPartnerRelationshipId = function(index) {
+			vm.selectedTradingPartnerRelationship.nonUniversalIds.splice(index, 1);
+		};
+
+		vm.getTradingPartnerRelationshipNonUniversalIds = function() {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipNonUniversalIds, [], "tradingPartnerRelationshipNonUniversalIds");
+		};
+
+		vm.getTradingPartnerRelationshipTags = function()  {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipTags,           [], "tradingPartnerRelationshipTags");
+		};
+
+		vm.getTradingPartnerRelationshipTypes = function()  {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipTypes,          [], "tradingPartnerRelationshipTypes");
+		};
+
+		vm.getTradingPartnerRelationshipStatuses = function()  {
+			vm.callRemoteAction(relationshipUtilMapper.getTradingPartnerRelationshipStatuses,       [], "tradingPartnerRelationshipStatuses");
+		};
+
+		/////////////// Utility methods
+
+		vm.checkIfOneId = function( uniqueIdentificationNumbers ) {
+			if(uniqueIdentificationNumbers &amp;&amp; uniqueIdentificationNumbers.length == 1) return true;
+			return false;
+		};
+
+		vm.checkIfMoreOneId = function( uniqueIdentificationNumbers ) {
+			if(uniqueIdentificationNumbers &amp;&amp; uniqueIdentificationNumbers.length > 1) return true;
+			return false;
+		};
+
+		vm.cleanSelectedObjects = function() {
+			vm.selectedTradingPartnerRelationship = {};
+			vm.selectedProductRelationship = {};
+			vm.selectedResult = {};
+			if(vm.selectedUBE) vm.selectedUBE = null;
+			vm.productRelationsipPermissionsSelectedList = [];
+		};
+
+		vm.partnerSearch = function()
+		{
+			vm.result = '';
+
+			var searchTerm = '';
+			if(vm.search.SearchTermTradingPartner)
+				searchTerm = vm.search.SearchTermTradingPartner.replace(/\s+/g, ' ');// vm.search.SearchTerm.trim();
+			searchTerm = searchTerm.trim();
+			//AP-93
+			if(vm.searchPattern.test(searchTerm))
+				vm.result = 'Invalid search term: One of the special characters or symbols you used is not allowed for search and search term should be longer than 2 characters.';
+			else if(searchTerm.length > 1)
+				vm.callRemoteAction(findProductControllerMapper.tradingPartnerSearch, [searchTerm], "partnerSearchResults");
+		};
+
+		vm.productSearch = function()
+		{
+			vm.result = '';
+			vm.search.filter = 0;
+			vm.disableCreateBtn = false;
+			vm.productSearchResult = {};
+			vm.productSearchResult.items = [];
+			vm.productConnectedSearchResult = {};
+			vm.productConnectedSearchResult.items = [];
+			vm.cleanSelectedObjects();
+
+			if(String.isEmpty(vm.search.SearchTerm))
+				vm.search.SearchTerm = "";
+			else
+				vm.search.SearchTerm = vm.search.SearchTerm.replace(/\s+/g, ' ').trim();
+
+			if(!vm.search.SearchTradingPartner.id)
+				vm.result = 'Invalid Trading Partner.';
+			else if(vm.search.SearchTerm.length > 0 &amp;&amp; vm.search.SearchTerm.length &lt; 2)
+				vm.result = 'Invalid search term: Use at least 2 alpha-numeric characters.';
+			else if(vm.searchPattern.test( vm.search.SearchTerm ))
+				vm.result = 'Invalid search term: One of the special characters or symbols you used is not allowed for search and search term should be at least 2 characters long.';
+			else
+			{
+				vm.callRemoteAction(findProductControllerMapper.productSearch, [vm.search.SearchTradingPartner.id, vm.search.SearchTerm, vm.search.filter, 0], "productSearchResult");
+				//vm.callRemoteAction(findProductControllerMapper.productSearch, [vm.search.SearchTradingPartner.id, vm.search.SearchTerm, vm.search.filter, vm.searchlimit], "productSearchResultHidden");
+				vm.callRemoteAction(findProductControllerMapper.productSearch, [vm.currentUbeId, vm.search.SearchTerm, 1, 0], vm.getProductConnectedSearchResult);
+				vm.hideStartProductSearchForm();
+			}
+		};
+
+		vm.getProductConnectedSearchResult = function(result)
+		{
+			if(result &amp;&amp; result.total) {
+				vm.productConnectedSearchResult = result;
+			}
+		};
+
+		vm.goToProduct = function(row) {
+			NavigationService.goToObject(row.productSFId, "", "_blank");
+		};
+
+		vm.goToTradinngPartner = function(row) {
+			NavigationService.goToObject(row.ubeSFId, "", "_blank");
+		};
+
+		vm.loadMore = function()
+		{
+			if(vm.productSearchResult)
+				vm.productSearchLoadMore();
+			else if(vm.productConnectedSearchResult)
+				vm.productConnectedSearchLoadMore();
+		};
+
+		vm.productSearchLoadMore = function()
+		{
+			var total = 0;
+			var offset = 0;
+
+			if(vm.productSearchResult.total &amp;&amp; vm.productSearchResult.items) {
+				total = vm.productSearchResult.total;
+				offset = vm.productSearchResult.items.length;
+			}
+
+			if(total > offset)
+				vm.callRemoteAction(findProductControllerMapper.productSearch, [vm.search.SearchTradingPartner.id, vm.search.SearchTerm, vm.search.filter, offset], vm.getLoadMoreResult);
+		};
+
+		vm.productConnectedSearchLoadMore = function()
+		{
+			var total = 0;
+			var offset = 0;
+
+			if(vm.productConnectedSearchResult.total &amp;&amp; vm.productConnectedSearchResult.items) {
+				total = vm.productConnectedSearchResult.total;
+				offset = vm.productConnectedSearchResult.items.length;
+			}
+
+			if(total > offset)
+				vm.callRemoteAction(findProductControllerMapper.productSearch, [vm.currentUbeId, vm.search.SearchTerm, vm.search.filter, offset], vm.getLoadMoreConnectedResult);
+		};
+
+		vm.getLoadMoreResult = function(result)
+		{
+			if(result &amp;&amp; result.total) {
+				var loaded_items = result.items;
+				var loaded_items_size = loaded_items.length;
+				var total = vm.productSearchResult.total;
+				var size = vm.productSearchResult.items.length;
+
+				if(total > 0 &amp;&amp; loaded_items_size > 0 &amp;&amp; total > loaded_items_size &amp;&amp; total > size)
+					angular.forEach(loaded_items, el => vm.productSearchResult.items.push(el) );
+			}
+		};
+
+		vm.getLoadMoreConnectedResult = function(result)
+		{
+			if(result &amp;&amp; result.total) {
+				var loaded_items = result.items;
+				var loaded_items_size = loaded_items.length;
+				var total = vm.productConnectedSearchResult.total;
+				var size = vm.productConnectedSearchResult.items.length;
+
+				if(total > 0 &amp;&amp; loaded_items_size > 0 &amp;&amp; total > loaded_items_size &amp;&amp; total > size)
+					angular.forEach(loaded_items, el => vm.productConnectedSearchResult.items.push(el) );
+			}
+		};
+
+		vm.showStartProductSearchForm = function() {
+			vm.startProductSearchForm = true;
+		};
+
+		vm.hideStartProductSearchForm = function() {
+			vm.startProductSearchForm = false;
+			$timeout(() => vm.stencilSearch = false, 1000);
+		};
+
+		vm.hidePartnerModal = function() {
+			vm.modalPartnerVisibility = false;
+		};
+
+		vm.showPartnerModal = function() {
+			vm.modalPartnerVisibility = true;
+		};
+
+		vm.hideProductModal = function() {
+			vm.modalProductVisibility = false;
+		};
+
+		vm.showProductModal = function() {
+			vm.modalProductVisibility = true;
+		};
+
+		vm.hideProductRelationshipModal = function() {
+			vm.modalProductRelationshipVisibility = false;
+		};
+
+		vm.showProductRelationshipModal = function() {
+			vm.modalProductRelationshipVisibility = true;
+		};
+
+		vm.hideProductPermissionsModal = function() {
+			vm.modalProductPermissionsVisibility = false;
+			vm.loading = false;
+		};
+
+		vm.showProductPermissionsModal = function() {
+			vm.modalProductPermissionsVisibility = true;
+		};
+
+		vm.productCreateShowModal = function()
+		{
+			vm.productConnect.addedList   = [];
+			vm.productConnect.editedList  = [];
+			vm.productConnect.deletedList = [];
+			vm.createNewProduct = true;
+			vm.connectToProductShowModal(null, true);
+		};
+
+		vm.cancel = vm.close = function()
+		{
+			vm.hidePartnerModal();
+			vm.hideProductModal();
+			vm.hideProductRelationshipModal();
+			vm.cleanSelectedObjects();
+		};
+
+		vm.productDto = null;
+
+		vm.connectToProductOrPartner = function(product)
+		{
+			if(product.isTradingPartnerConnected)
+				vm.connectToProductShowModal( product );
+			else
+				vm.connectToPartnerShowModal( product );
+		};
+
+		vm.connectToPartnerShowModal = function(searchresult)
+		{
+			vm.showPartnerModal();
+			vm.selectedResult = searchresult;
+			vm.selectedUBE = {};
+			if(searchresult.searchItem.uniqueBusinessEntityId != null) {
+				vm.callRemoteAction(findProductControllerMapper.getUbeData, [searchresult.searchItem.uniqueBusinessEntityId ], vm.connectToPartnerLoadData);
+			}
+			vm.setDefaultPartnerData();
+		};
+
+		vm.setDefaultPartnerData = function()
+		{
+			vm.selectedTradingPartnerRelationship = {};
+			vm.selectedTradingPartnerRelationship.relationshipStatus = 'Pending';
+			if(vm.selectedResult &amp;&amp; vm.selectedResult.searchItem.uniqueBusinessEntityName)
+				vm.selectedTradingPartnerRelationship.tradingPartnerName = vm.selectedResult.searchItem.uniqueBusinessEntityName;
+
+			if(!vm.selectedTradingPartnerRelationship.tags)
+				vm.selectedTradingPartnerRelationship.tags = [];
+
+			if(Array.isEmpty(vm.selectedTradingPartnerRelationship.tags))
+				angular.forEach(vm.tradingPartnerRelationshipTags, el => vm.selectedTradingPartnerRelationship.tags.push({ label: el, value: false }) );
+		};
+
+		vm.connectToPartnerLoadData = function(result)
+		{
+			vm.errorTradingPartnerRelationship = '';
+			if(result != null)
+				vm.selectedUBE = result;
+			else
+				vm.errorTradingPartnerRelationship = 'Error loading partner data.';
+		};
+
+		vm.checkTradingPartnerRelationship = function()
+		{
+			var uuRelationship = {};
+			var tags = [];
+			vm.errorTradingPartnerRelationship = '';
+
+			if(vm.selectedTradingPartnerRelationship)
+			{
+				tags = [];
+				angular.forEach(vm.selectedTradingPartnerRelationship.tags, function(el)
+				{
+					if(el.value &amp;&amp; el.label &amp;&amp; !(el.label in tags))
+						tags.push(el.label);
+				});
+
+				if(vm.selectedTradingPartnerRelationship.tradingPartnerName)
+					uuRelationship.tradingPartnerName = vm.selectedTradingPartnerRelationship.tradingPartnerName;
+
+				if(vm.selectedTradingPartnerRelationship.name)
+					uuRelationship.name = vm.selectedTradingPartnerRelationship.name;
+				else
+					vm.errorTradingPartnerRelationship += 'Error: Enter Trading Partner Relationship Name. ';
+
+				if(vm.selectedTradingPartnerRelationship.relationshipStatus)
+					uuRelationship.relationshipStatus = vm.selectedTradingPartnerRelationship.relationshipStatus;
+				else
+					vm.errorTradingPartnerRelationship += 'Error: Select Trading Partner Relationship Status. ';
+				if(vm.selectedTradingPartnerRelationship.relationshipType)
+					uuRelationship.relationshipType = vm.selectedTradingPartnerRelationship.relationshipType;
+				else
+					vm.errorTradingPartnerRelationship += 'Error: Select Trading Partner Relationship Type. ';
+
+				if(vm.selectedTradingPartnerRelationship.nonUniversalIds)
+					uuRelationship.nonUniversalIds = vm.selectedTradingPartnerRelationship.nonUniversalIds;
+				if(vm.selectedTradingPartnerRelationship.comment)
+					uuRelationship.comment = vm.selectedTradingPartnerRelationship.comment;
+
+				uuRelationship.tags = tags;
+			}
+			return uuRelationship;
+		};
+
+		vm.connectToProductShowModal = function(searchresult)
+		{
+			vm.showProductModal();
+			vm.selectedResult = searchresult;
+			vm.product = {};
+			vm.product.universalIds = [];
+			vm.openImagePreview = false;
+
+			if(searchresult != null &amp;&amp; searchresult.searchItem.isTradingPartnerConnected) {
+				vm.selectedUBE = {};
+				vm.selectedUBE.name = searchresult.searchItem.uniqueBusinessEntityName;
+			}
+			//for Connect to Product
+			if(searchresult != null) {
+				vm.callRemoteAction(findProductControllerMapper.getUPRelationshipData, [ searchresult.searchItem.uniqueBusinessEntityProductRelationshipId ], vm.connectToProductLoadData);
+				vm.openNewProductPagePopup = false;
+			}
+			//for Create Product
+			else {
+				vm.selectedResult = {};
+				vm.openNewProductPagePopup = true;
+			}
+		};
+
+		vm.checkProductExist = function(productUniversalIds)
+		{
+			var universalIds = [];
+			angular.forEach(productUniversalIds, function(el) {
+				if(String.isNotEmpty(el.key) &amp;&amp; String.isNotEmpty(el.value))
+					universalIds.push( { key: el.key, value: el.value } );
+			});
+
+			console.log('checkProductExist: universalIds =' + universalIds);
+			if(Array.isNotEmpty(universalIds))
+				vm.callRemoteAction(relationshipUtilMapper.getProductByUniversalIds, [ universalIds ],  vm.getProductByUniversalIdsData);
+			else
+				vm.callRemoteAction(relationshipUtilMapper.getProductIXNId,          [],                vm.getProductByIXNId);
+		};
+
+		vm.getProductByIXNId = function(result)
+		{
+			vm.errorProduct = '';
+			if(vm.$error || !result)
+				return vm.errorProduct = 'Error loading product data.';
+
+			vm.product.universalIds = [];
+			vm.product.universalIds.push( { key: "IXN", value: result } );
+
+			vm.hideProductModal();
+			vm.showProductRelationshipModal();
+			vm.setDefaultProductRelationshipData();
+		};
+
+		vm.getProductByUniversalIdsData = function(result)
+		{
+			vm.errorProduct = '';
+			if(vm.$error || !result)
+				vm.errorProduct = 'Error loading product data.';
+
+			if(result.length == 0)
+			{
+				vm.hideProductModal();
+				vm.showProductRelationshipModal();
+				vm.setDefaultProductRelationshipData();
+			}
+			else if(result.length > 1)
+			{
+				var str_products = '';
+				for(var k = 0, l = result.length; k &lt; l; k++)
+				{
+					var k1 = k + 1;
+					str_products = str_products + 'Product ' + k1 + ': ';
+					var str_productUniqueUniversalIds = '';
+					var productUniqueUniversalIds = result[k].productUniqueUniversalIds;
+					for(var i = 0, len = productUniqueUniversalIds.length; i &lt; len; i++){
+						var el = productUniqueUniversalIds[i];
+						if(el.key &amp;&amp; el.value) str_productUniqueUniversalIds = (str_productUniqueUniversalIds != '' ? str_productUniqueUniversalIds + ', ' : '') + el.key + el.value ;
+					}
+					str_products = str_products + str_productUniqueUniversalIds + '; ';
+				}
+				vm.errorProduct = 'Error: We found more than one product that match IDs that you have entered. ' + str_products + ' Please change IDs.';
+			}
+			else if(result.length == 1)
+			{
+				//for Connect to Product
+				if(vm.openNewProductPagePopup == false){
+					if(vm.product.hubId == result[0].id){
+						vm.hideProductModal();
+						vm.showProductRelationshipModal();
+						vm.setDefaultProductRelationshipData();
+					}
+					else vm.errorProduct = 'Error: You are trying to connect to a different Product. Please, change IDs. ';
+				}
+				//for Create Product
+				else {
+					var productUniqueUniversalIds = result[0].productUniqueUniversalIds;
+					var str_productUniqueUniversalIds = '';
+					for(var i = 0, len = productUniqueUniversalIds.length; i &lt; len; i++){
+						var el = productUniqueUniversalIds[i];
+						if(el.key &amp;&amp; el.value)
+							str_productUniqueUniversalIds += "&lt;li>" + el.key + el.value + "&lt;/li>";
+					}
+					vm.openDialogYesNo('We found a product that matches one of the IDs you have entered:&lt;ul>' + str_productUniqueUniversalIds + '&lt;/ul>Do you want to connect to this product?');
+					vm.productDto = result[0];
+				}
+			}
+		};
+
+		vm.setDefaultProductRelationshipData = function()
+		{
+			if(!vm.selectedProductRelationship.name)
+			{
+				if(vm.selectedResult) {
+					if(vm.selectedResult.searchItem &amp;&amp; vm.selectedResult.searchItem.uniqueBusinessEntityName)
+						vm.selectedProductRelationship.UPTardingPartner = vm.selectedResult.searchItem.uniqueBusinessEntityName;
+					vm.selectedProductRelationship.selectedTardingPartnerId = vm.selectedResult.ubeSFId;
+				}
+
+				vm.selectedProductRelationship.relationshipStatus = 'Pending';
+
+				vm.selectedProductRelationship.tags = [];
+				angular.forEach(vm.tags, el => vm.selectedProductRelationship.tags.push({ label: el, value: false }) );
+
+				vm.selectedProductRelationship.attributes = [];
+				angular.forEach(vm.attributes, el => vm.selectedProductRelationship.attributes.push({ key: el, value: null }) );
+
+				if(!vm.selectedProductRelationship.nonUniversalIds)
+					vm.selectedProductRelationship.nonUniversalIds = [];
+
+				vm.getRelationshipTypes(vm.product.hubId, vm.selectedProductRelationship.selectedTardingPartnerId, null);
+			}
+
+			if(vm.product &amp;&amp; vm.product.name)
+				vm.selectedProductRelationship.name = vm.product.name;
+		};
+
+		vm.connectToProductLoadData = function(result)
+		{
+			vm.errorProduct = '';
+			if(!result)
+				return vm.errorProduct = 'Error loading product data.';
+
+			vm.product.name         = result.name;
+			vm.product.hubId        = result.hubId;
+			vm.product.logo         = result.logo;
+			vm.product.description  = result.description;
+			vm.product.universalIds = [];
+			vm.product.universalIds = result.universalIds;
+			if(String.isNotEmpty(vm.product.logo))
+			{
+				vm.openImagePreview = true;
+				vm.imageUrl = vm.product.logo;
+				// Set Image Name as Preview
+				var imageNameElement = angular.element(document.querySelector('#img_Name'));
+				imageNameElement.text('Preview');
+			}
+		};
+
+		vm.checkProductRelationship = function()
+		{
+			var upRelationship = {};
+			var tags = [];
+			var attributesList = [];
+			vm.errorProductRelationship = '';
+
+			if(vm.selectedProductRelationship)
+			{
+				tags = [];
+				angular.forEach(vm.selectedProductRelationship.tags, function(el)
+				{
+					if(el.value &amp;&amp; el.label &amp;&amp; !(el.label in tags))
+						tags.push(el.label);
+				});
+
+				angular.forEach(vm.AttributeList, function(el)
+				{
+					if(!el || String.isEmpty(el.value)) return;
+
+					if(!el.type || el.type == 'Text')
+						attributesList.push({key: el.uniqueId, value: el.value});
+					else if(el.type == 'Picklist')
+						attributesList.push({key: el.uniqueId, value: el.value.value});
+					else if(el.type == 'Multi-Picklist' &amp;&amp; Array.isArray(el.value))
+						angular.forEach(el.value, item => attributesList.push({key: el.uniqueId, value: item.value}) );
+				});
+
+				if(vm.selectedProductRelationship.name)
+					upRelationship.name = vm.selectedProductRelationship.name;
+
+				if(vm.selectedProductRelationship.relationshipStatus)
+					upRelationship.relationshipStatus = vm.selectedProductRelationship.relationshipStatus;
+				else
+					vm.errorProductRelationship += 'Error: Select Product Relationship Status. ';
+
+				if(vm.selectedProductRelationship.relationshipType)
+					upRelationship.relationshipType = vm.selectedProductRelationship.relationshipType;
+				else
+					vm.errorProductRelationship += 'Error: Select Product Relationship Type. ';
+
+				if(vm.selectedProductRelationship.selectedTardingPartnerId)
+					upRelationship.selectedTardingPartnerId = vm.selectedProductRelationship.selectedTardingPartnerId;
+
+				if(vm.selectedProductRelationship.comment)
+					upRelationship.comment = vm.selectedProductRelationship.comment;
+
+				if(vm.selectedProductRelationship.nonUniversalIds)
+					upRelationship.nonUniversalIds = vm.selectedProductRelationship.nonUniversalIds;
+				if(vm.selectedProductRelationship.childrensProduct)
+					upRelationship.childrensProduct = vm.selectedProductRelationship.childrensProduct;
+
+				upRelationship.tags = tags;
+				upRelationship.attributes = attributesList;
+			}
+
+			return upRelationship;
+		};
+
+		vm.saveRelationship = function(option)
+		{
+			vm.option = option;
+			vm.result = '';
+			var isError = false;
+			var uuRelationship = null;
+			var upRelationship = null;
+			var parent_upRelationship_hubId = null;
+			var ube = null;
+			var ubeSFId = null;
+			var ubeIsTradingPartnerConnected = null;
+
+			//create new product and uprelationship
+			if(option == 'newproduct')
+			{
+				upRelationship = vm.checkProductRelationship();
+				if(String.isEmpty(vm.product.name))
+					vm.errorProductRelationship += 'Error: Enter Product Name. ';
+
+				var universalIds = [];
+				angular.forEach(vm.product.universalIds, function(el)
+				{
+					if(String.isNotEmpty(el.key) &amp;&amp; String.isNotEmpty(el.value))
+						universalIds.push({key: el.key, value: el.value});
+				});
+				vm.product.universalIds = universalIds;
+
+				if(String.isNotEmpty(vm.errorProduct) || String.isNotEmpty(vm.errorProductRelationship))
+					isError = true;
+			}
+			//connect to ube (uurelationship)
+			else if(option == 'newpartnerrelationship')
+			{
+				uuRelationship = vm.checkTradingPartnerRelationship();
+				if(String.isNotEmpty(vm.errorTradingPartnerRelationship))
+					isError = true;
+			}
+			//connect to product (uprelationship)
+			else if(option == 'newproductrelationship')
+			{
+				upRelationship = vm.checkProductRelationship();
+				if(String.isNotEmpty(vm.errorProductRelationship))
+					isError = true;
+			}
+			//connect to ube (uurelationship) and connect to product (uprelationship)
+			else if(option == 'newpartnerrelationship_newproductrelationship')
+			{
+				uuRelationship = vm.checkTradingPartnerRelationship();
+				upRelationship = vm.checkProductRelationship();
+
+				if(String.isNotEmpty(vm.errorTradingPartnerRelationship) || String.isNotEmpty(vm.errorProductRelationship))
+					isError = true;
+			}
+
+			if(vm.selectedResult)
+			{
+				if(vm.selectedUBE)
+					ube = vm.selectedUBE;
+
+				if(vm.selectedResult.ubeSFId)
+					ubeSFId = vm.selectedResult.ubeSFId;
+
+				if(vm.selectedResult.isTradingPartnerConnected)
+					ubeIsTradingPartnerConnected = vm.selectedResult.isTradingPartnerConnected;
+
+				if(vm.selectedResult.productSFId)
+					vm.product.sfId = vm.selectedResult.productSFId;
+
+				if(vm.selectedResult.searchItem &amp;&amp; vm.selectedResult.searchItem.uniqueBusinessEntityProductRelationshipId)
+					parent_upRelationship_hubId = vm.selectedResult.searchItem.uniqueBusinessEntityProductRelationshipId;
+			}
+
+			if(window.contentDistributionId)
+				vm.product.contentDistributionId = window.contentDistributionId;
+
+			if(!isError)
+			{
+				// if Image is removed, set blank content distribution Id
+				if(!vm.openImagePreview)
+					window.contentDistributionId = '';
+
+				vm.callRemoteAction(findProductControllerMapper.saveRelationship,
+					[   ube,
+						ubeSFId,
+						ubeIsTradingPartnerConnected,
+						parent_upRelationship_hubId,
+						uuRelationship,
+						vm.product,
+						upRelationship,
+						vm.productRelationsipPermissionsOption,
+						vm.productRelationsipPermissionsSelectedList,
+						null
+					],
+					vm.getResult);
+			}
+		};
+
+		vm.getResult = function(result)
+		{
+			vm.loading = false;
+			vm.result = '';
+
+			vm.cleanSelectedObjects();
+			vm.productRelationsipPermissionsOption = vm.permissionOptions[0];
+			vm.hidePartnerModal();
+			vm.hideProductModal();
+			// vm.hideProductRelationshipModal();
+
+			if(result.includes('Error'))
+			{
+				vm.result = result;
+				vm.greyed = false;
+			}
+			else
+			{
+				vm.greyed = true;
+				vm.cancelButtonText = 'Back';
+
+				if(vm.option == 'newproduct' || vm.option == 'newproductrelationship')
+					vm.openDialog(result, 'New Product Relationship created successfully. ');
+				else if(vm.option == 'newpartnerrelationship')
+					vm.openDialog(result, 'Trading Partner connected successfully.');
+				else
+					vm.openDialog(result, 'Trading Partner connected successfully. Product Relationship created successfully. ');
+			}
+
+			return vm.result;
+		};
+
+		vm.goToRelationship = function() {
+			vm.product.hubId        = vm.productDto.id;
+			vm.product.universalIds = [];
+			vm.product.universalIds = vm.productDto.productUniqueUniversalIds;
+			vm.modalDialogVisibility = false;
+			vm.productDto = null;
+			vm.hideProductModal();
+			vm.showProductRelationshipModal();
+			vm.setDefaultProductRelationshipData();
+		};
+
+		vm.showError = function() {
+			vm.errorProduct = 'Error: We found more than one product that matches IDs that you have entered.';
+			vm.modalDialogVisibility = false;
+			vm.productDto = null;
+			vm.showProductModal();
+		};
+
+		vm.openDialog = function(redirect, text)
+		{
+			vm.modalDialogVisibility = true;
+			vm.modalDialogText = text;
+			vm.modalTitle = 'Success';
+			vm.modalDialogRedirect = redirect;
+			vm.modalShowBtnClose = true;
+			vm.modalShowBtnYes = false;
+			vm.modalShowBtnNo = false;
+		};
+
+		vm.openDialogYesNo = function(text)
+		{
+			vm.modalConfirmationDialogVisibility = true;
+			vm.modalDialogText = text;
+			vm.modalTitle = 'The Product match was found';
+			vm.modalDialogRedirect = '';
+			vm.modalShowBtnClose = false;
+			vm.modalShowBtnYes = true;
+			vm.modalShowBtnNo = true;
+			vm.hideProductModal();
+		};
+
+		vm.init();
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

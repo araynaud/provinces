@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: partners/app/components/partnerMatches/partnerMatches.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: partners/app/components/partnerMatches/partnerMatches.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module partners/components/partnerMatches
+@description This is the Trading partner search page controller for Trading Partners search page. 
+
+@param main             {object[]}                = 
+*/
+module.exports = function (ngModule) {
+	require("!style!css!less!./partnerMatchCard.less");
+	require('./partnerMatchCard')(ngModule);
+	ngModule.component('partnerMatches', {
+			bindings: { main: '=' },
+			template: require('./partnerMatches.html'),
+			controllerAs: 'mvm',
+			controller: PartnerMatchesController
+	});
+
+	PartnerMatchesController.$inject = ['$scope','$element','$attrs','$window','$timeout','anchorSmoothScroll','$anchorScroll','$location']
+	function PartnerMatchesController  ( $scope,  $element,  $attrs,  $window,  $timeout,  anchorSmoothScroll,  $anchorScroll,  $location ) 
+	{
+		var mvm = this;
+		mainVm.partnerMatch = mvm;
+
+		mvm.$onInit = function() {
+			mvm.getCardWidths();
+
+			angular.element($window).bind('resize', function() {
+				mvm.getCardWidths();
+				$scope.$digest();		//manual $digest required, as resize event is outside of angular
+			});
+		};
+
+		mvm.getCardWidths = function()
+		{
+			var mainWidths = angular.element(document.getElementById('mainWidth')).prop('offsetWidth') - 48;
+			var totalCards = Math.floor((mainWidths - 14) / 250);
+			var totass = totalCards+1;
+			return mvm.main.cardWidths = { mainWidths: mainWidths, totalCard: totalCards };
+		};
+
+		mvm.openDrawer = function(partner) 
+		{
+			mvm.main.drawerId = mvm.main.drawerId == partner ? false : partner;
+			if(document.getElementsByClassName('childs_'+partner).length > 0)
+				mvm.offssetLs = -(document.getElementsByClassName('childs_'+partner)[0].offsetLeft - 30)+'px';
+
+			mvm.widthTotl = angular.element(document.getElementById('mainWidth')).prop('offsetWidth')+'px';
+			$timeout(() => mvm.gotoAnchor(partner), 150);
+		};
+
+		mvm.gotoAnchor = function(x) 
+		{
+			var newHash = 'anchor' + x;
+			if($location.hash() !== newHash)
+				anchorSmoothScroll.scrollTo('anchor' + x); // set the $location.hash to `newHash` and $anchorScroll will automatically scroll to it
+			else
+				$anchorScroll(); 	// call $anchorScroll() explicitly, since $location.hash hasn't changed
+		};
+	};
+
+	ngModule.service('anchorSmoothScroll', function()
+	{
+		this.scrollTo = function(eID) 
+		{
+			// This scrolling function is from http://www.itnewb.com/tutorial/Creating-the-Smooth-Scroll-Effect-with-JavaScript
+			var startY = currentYPosition();
+
+			var stopY = elmYPosition(eID);
+			//console.log(startY,"startY",stopY,"stopY",eID,"eID");
+			var distance = stopY > startY ? stopY - startY : startY - stopY;
+			if (distance &lt; 100) {
+				scrollTo(0, stopY); return;
+			}
+			var speed = Math.round(distance / 40);
+			if (speed >= 20) speed = 20;
+			var step = Math.round(distance / 25);
+			var leapY = stopY > startY ? startY + step : startY - step;
+			
+			var timer = 0;
+			if (stopY > startY) {
+				for ( var i=startY; i&lt;stopY; i+=step ) {
+					//console.log(leapY,"leapY");
+					setTimeout("window.scrollTo(0, "+leapY+")", timer * speed);
+					leapY += step; if (leapY > stopY) leapY = stopY; timer++;
+				} return;
+			}
+			for ( var i=startY; i>stopY; i-=step ) {
+				//console.log(leapY,"leapY");
+				setTimeout("window.scrollTo(0, "+leapY+")", timer * speed);
+				leapY -= step; if (leapY &lt; stopY) leapY = stopY; timer++;
+			}
+			
+			function currentYPosition() {
+				// Firefox, Chrome, Opera, Safari
+				if (self.pageYOffset) return self.pageYOffset;
+				// Internet Explorer 6 - standards mode
+				if (document.documentElement &amp;&amp; document.documentElement.scrollTop)
+					return document.documentElement.scrollTop;
+				// Internet Explorer 6, 7 and 8
+				if (document.body.scrollTop) return document.body.scrollTop;
+				return 0;
+			}
+			
+			function elmYPosition(eID) {
+				if(!eID) return 0;
+				var elm = document.getElementById(eID);
+				if(!elm) return 0;
+				var y = elm.offsetTop - 100;
+				var node = elm;
+				while (node.offsetParent &amp;&amp; node.offsetParent != document.body) {
+					node = node.offsetParent;
+					y += node.offsetTop;
+				} return y;
+			}
+
+		};
+	})
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

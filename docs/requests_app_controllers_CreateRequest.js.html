@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: requests/app/controllers/CreateRequest.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: requests/app/controllers/CreateRequest.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module requests/components/CreateRequest
+@description This is the CreateRequest controller for CreateRequest page.
+*/
+module.exports = function(ngModule){
+
+	ngModule.controller('CreateRequest', CreateRequest);
+	CreateRequest.$inject = ['$scope', '$timeout', 'CommonUtils', 'RemoteActionService', 'NavigationService', 'ToastService'];
+	function CreateRequest  ( $scope,   $timeout,   CommonUtils,   RemoteActionService,   NavigationService,   ToastService )
+	{
+		window.CreateRequest = $scope;
+		$scope.labels = window.labels || {};
+
+		const DATE_FORMAT      = $scope.labels.dateFormat.shortDate;
+		const DATE_TIME_FORMAT = $scope.labels.dateFormat.shortDateTime;
+
+		$scope.init = function()
+		{
+			$scope.data = {};
+			// contains all data selected in page fields
+			$scope.data.requestType = "tp";
+			$scope.deleteDraftflag = false;
+			$scope.data.selectedProducts = [];
+			$scope.data.selectedPartners = [];
+			$scope.data.selectedDocumentTemplates = [];
+			$scope.data.comment = "";
+			$scope.data.tradingPartnerNames = [];
+			$scope.data.ccUserList = [];
+			$scope.data.assignTo = "";
+			$scope.data.bccUserList = [];
+			$scope.data.excludedUserIds = [];
+			$scope.data.tradingPartnerIds = [];
+			$scope.data.appendProductName = false;
+			$scope.data.appendTradingPartnerName = false;
+			$scope.productAssociatedAccounts = {};
+			$scope.labels = window.labels;
+			$scope.initialProductIdIsUpr = false;
+
+			$scope.objectUrl = NavigationService.objectUrl;
+			$scope.parentRecord = NavigationService.getParentRecord();
+			$scope.initSelection(); //AP-594
+			$scope.data.requestName = $scope.getRequestName();
+			$scope.showAssignedToField = window.configSettings.showAssignedToField;
+
+			//UI flags
+			$scope.stencil = true;
+			$scope.isDateValid = true;
+			$scope.isDraftCreated = false;
+			$scope.showLoader = false;
+			$scope.cancelling = false;
+			$scope.showLoaderSaveDraft = false;
+			$scope.buttonDisabled = false;
+			$scope.disableYesBtn = false;
+			$scope.confirmationSendDialogVisibility = false;
+			$scope.createNewRequest = false;
+			$scope.redirectToRequestListPageFlag = false;
+			$scope.draftType = 'new';
+			$scope.selectedAndProcessedDocuments = [];
+			$scope.objectPrefix = CommonUtils.getVar("configSettings.objectPrefix", window, "");
+
+			// cc bcc
+			$scope.showCCAndBCCButton = false;
+			$scope.showCCAndBCCInterface = false;
+			$scope.showccBox = false;
+			$scope.showBccBox = false;
+
+			$scope.sendRequestDialog = {
+				actions: [
+					{ text: $scope.labels.common.no,  close: true, click: $scope.sendExplicitNo },
+					{ text: $scope.labels.common.yes, close: true, click: $scope.sendExplicit, disable: function(row){ return $scope.disableYesBtn; } }
+				]
+			};
+
+			$scope.deleteDraftDialog = {
+				actions: [{ text: $scope.labels.common.delete, close: true, click: $scope.cleanUpAndCancelForDraft }]
+			};
+
+			$scope.sendRequestTable = {
+				columns: [
+					{ field: "isSelected",       label: " ", type: "checkbox", align: "left", change: $scope.checkBoxesChecked },
+					{ field: "productName",      label: $scope.labels.common.columnProductName, click: $scope.selectProduct},
+					{ field: "partnerName",      label: $scope.labels.common.columnPartnerName, click: $scope.selectPartner},
+					{ field: "formName",         label: $scope.labels.common.columnFormName},
+					{ field: "status",           label: $scope.labels.common.columnStatus, style: function(row){ if(row &amp;&amp; row.status == "Fail") return {color: "red"}; else if(row &amp;&amp; row.status == "Pass") return {color: "green"};} },
+					{ field: "dueDate",          label: $scope.labels.common.columnDueDate, align: "center", dateFormat: DATE_TIME_FORMAT },
+					{ field: "expirationDate",   label: $scope.labels.common.columnExpirationDate, align: "center", dateFormat: DATE_FORMAT}
+				]
+			};
+
+			$scope.newRequestTable = {
+				columns: [
+					{ field: "isSelected",       label: " ", type: "checkbox", align: "left", change: $scope.checkBoxesChecked },
+					{ field: "productName",      label: $scope.labels.common.columnProductName, click: $scope.selectProduct},
+					{ field: "partnerName",      label: $scope.labels.common.columnPartnerName, click: $scope.selectPartner},
+					{ field: "formName",         label: $scope.labels.common.columnFormName},
+					{ field: "dueDate",          label: $scope.labels.common.columnDueDate, align: "center", dateFormat: DATE_TIME_FORMAT}
+				]
+			};
+
+			$scope.deleteDraftflag =  NavigationService.getParameter("recid") !== null;
+			$scope.requestId = NavigationService.getParameter("recid");
+			$scope.$watch('data.selectedDocumentTemplates', $scope.validateSelectedContainers);
+
+			$scope.$watch('data.selectedProducts', function(newValue, oldValue) {
+				if(Array.getCount($scope.data.selectedProducts) > 1) {
+					for (var i = $scope.data.selectedDocumentTemplates.length; i--;) {
+						if ($scope.data.selectedDocumentTemplates[i].ParentDataName == 'Product Test')
+							$scope.data.selectedDocumentTemplates.splice(i, 1);
+					}
+				}
+			});
+
+			//if request Id is present in the URL, then pre-populate the createRequest page with draft request data
+			if($scope.requestId != null)
+			{
+				RemoteActionService.callRemoteAction("getRequestDetails", [$scope.requestId], function(result)
+				{
+					$scope.selectedAndProcessedDocuments.push({
+						containerId: result.containerInstance,
+						documentId: result.wct.Id,
+						recipientId: result.recipientId,
+						requestId: $scope.requestId,
+						uniqueKeyString: result.uniqueKeyString,
+						requestGlobalId: result.requestGlobalId
+					});
+
+					$scope.data.requestName = result.requestName;
+					$scope.data.requestType = Array.isNotEmpty(result.selectedProducts) ? 'product' : 'tp';
+					$scope.draftType = $scope.data.requestType;
+					console.log($scope.data.requestType);
+					if($scope.data.requestType == 'tp')
+					{
+						$scope.data.selectedPartners = result.account;
+					}
+					else
+					{
+						$scope.data.selectedProducts = result.selectedProducts;
+						$scope.data.associatedAccounts = result.account;
+					}
+					$scope.data.tradingPartnerIds.push(result.account[0].TradingPartnerId);
+					$scope.data.dueDate = result.dueDate;
+					$scope.data.comment = result.comment;
+					// $scope.templateId = result.wct.Id;
+
+					var arr = [];
+					arr.push(result.wct);
+					$scope.data.selectedDocumentTemplates = arr.map(function(d) {
+						return { Id: d.Id, name: d.DataName, ParentDataName: d.ParentDataName, isSelected: true };
+					});
+				});
+			}
+		}; //end vm.init
+
+		//AP-594 / CR-1481 get selected Trading Partner and/or Product Id and Name from page parameters (when coming from a SObject record page)
+		$scope.initSelection = function()
+		{
+			if(!$scope.parentRecord || String.isBlank($scope.parentRecord.Id)) return;
+
+			//get product to check if the id parameter is valid -> on click of "new request" from icix product related list
+			//get upr to check if the id parameter is valid -> on click of "new request" from upr related list
+			RemoteActionService.callRemoteAction("getSpecificProductAndAccount", $scope.parentRecord.Id, function(result)
+			{
+				$scope.data.requestType = result.requestType;
+				//$scope.showCCAndBCCInterface = false;
+				$scope.showCCAndBCCButton = Array.isNotEmpty(result.partners);
+
+				//get product and account data from UPR record
+				if(result.requestType == "tp" &amp;&amp; Array.isNotEmpty(result.partners))
+				{
+					$scope.initialPartnerId      = $scope.parentRecord.Id;
+					$scope.data.selectedPartners = result.partners;
+					$scope.parentRecord.Name     = result.partners[0].TradingPartnerName;
+					$scope.hideAppendCheckboxes  = true;
+				}
+				else if(result.requestType == "product" &amp;&amp; Array.isNotEmpty(result.products))
+				{
+					$scope.initialProductId        = $scope.parentRecord.Id;
+					$scope.initialProductIdIsUpr   = result.idType == "UP_Relationship__c";
+					$scope.data.selectedProducts   = result.products;
+					$scope.data.associatedAccounts = result.partners;
+					$scope.parentRecord.Name       = result.products[0].Name;
+					$scope.hideAppendProductCheckbox = true;
+				}
+				$scope.data.requestName = $scope.getRequestName();
+
+			});
+		};
+
+		$scope.getIcon = function(item)
+		{
+			if(!item) return;
+			console.log("sldsLookup getIcon", item.TradingPartnerType);
+
+			if(item.TradingPartnerType == "group")
+				return { icon: "new_group", iconFile: "action", classes: "slds-icon-text-default tpgroupicon" };
+
+			if(item.TradingPartnerType == "tp")
+				return { icon: "account", iconFile: "standard"};
+		};
+
+		$scope.getRequestName = function()
+		{
+			var currentDate = moment().format($scope.labels.dateFormat.shortDateTime);
+			var suffix = " - " + currentDate;
+			var maxLength = 80 - suffix.length;
+			var prefix = $scope.parentRecord ? $scope.parentRecord.Name : $scope.labels.common.newRequest;
+			prefix = prefix.substring(0, maxLength); //truncate product name so that request name does not exceed 80 characters
+			return prefix + suffix;
+		};
+
+		function resetCCAndBCCFields(){
+			$scope.showCCAndBCCButton = false;
+			$scope.showCCAndBCCInterface = false;
+			$scope.showccBox = false;
+			$scope.showBccBox = false;
+			$scope.data.ccUserList = [];
+			$scope.data.bccUserList = [];
+			$scope.data.excludedUserIds = [];
+		}
+
+		//"Add CC/BCC" button is shown only if any trading partner is selected
+		$scope.manageCCAndBccInterface = function() {
+			$scope.showCCAndBCCInterface = true;
+			$scope.showccBox = true;
+			$scope.showBccBox = true;
+			$scope.showCCAndBCCButton = false;
+		};
+
+		// Get all CC/BCC usersId who are already selected
+		// When search is made, already selected CC/BCC userID are passed as excluseID i.e. in search all these users are not seached
+		$scope.getExcludeIds = function () {
+			$scope.data.excludedUserIds = [];
+
+			//execute in a timeout to ensure ccUserList and bccUserList are properly refreshed / up to date
+			$timeout(function()
+			{
+			//Get all already selected CC Users
+				for(var i = 0; i &lt; Array.getCount($scope.data.ccUserList); i++)
+					$scope.data.excludedUserIds.push($scope.data.ccUserList[i].Id);
+
+				//Get All selected BCC users
+				for(var i = 0; i &lt; Array.getCount($scope.data.bccUserList); i++)
+					$scope.data.excludedUserIds.push($scope.data.bccUserList[i].Id);
+
+				console.log("getExcludeIds", $scope.data.excludedUserIds);
+			}, 0);
+			return $scope.data.excludedUserIds;
+		};
+
+		//Hide CC lookup
+		$scope.hideCCUserBox = function() {
+			if($scope.showBccBox == false)
+				$scope.showCCAndBCCInterface = false;
+
+			$scope.showccBox = false;
+			$scope.showCCAndBCCButton = true;
+			$scope.data.ccUserList = [];
+		};
+
+		//Hide CC lookup
+		$scope.hideBCCUserBox = function() {
+			if($scope.showccBox == false)
+				$scope.showCCAndBCCInterface = false;
+
+			$scope.showBccBox = false;
+			$scope.showCCAndBCCButton = true;
+			$scope.data.bccUserList = [];
+		};
+
+		$scope.selectTradingPartner = function()
+		{
+			$scope.showCCAndBCCButton = $scope.showccBox || $scope.showBccBox || !$scope.showCCAndBCCInterface;
+		};
+
+		$scope.enableFormSelection = function() {
+			if(!$scope.data) return false;
+			return Array.isNotEmpty($scope.data.selectedPartners)
+				|| Array.isNotEmpty($scope.data.selectedProducts) &amp;&amp; Array.isNotEmpty($scope.data.associatedAccounts);
+		};
+
+		//associatedAccounts = combine unique accounts by id
+		$scope.getAssociatedPartners = function(products)
+		{
+			console.log("getAssociatedAccounts products:", products);
+			var selectedProductId = null;
+			if(angular.isString(products))
+				selectedProductId = products;
+			else if(Array.isNotEmpty(products))
+				selectedProductId = Array.last(products).Id;
+
+			//if no products selected, no associated accounts
+			if(!selectedProductId) {
+				$scope.data.associatedAccounts = [];
+				return console.log("getAssociatedAccounts:", "none.");
+			}
+
+			//call tradingPartnersAssociatedWithProduct: store result in $scope.productAssociatedAccounts (map by productId)
+			//to call remote action only once per product
+			if($scope.draftType != 'product'){
+				if($scope.productAssociatedAccounts[selectedProductId])
+					$scope.combineProductAssociatedPartners(products);
+				else
+					RemoteActionService.callRemoteAction("tradingPartnersAssociatedWithProduct", [selectedProductId], function(result) {
+						if(result)
+							$scope.productAssociatedAccounts[selectedProductId] = result; //save for later
+						$scope.combineProductAssociatedPartners(products);
+					});
+			}	
+		};
+
+		// associatedAccounts = combine unique accounts by id
+		$scope.combineProductAssociatedPartners = function(products)
+		{
+			var associatedAccounts = [];
+			angular.forEach(products, p => associatedAccounts.pushAll($scope.productAssociatedAccounts[p.Id]) );
+			$scope.data.associatedAccounts = Array.dedupBy(associatedAccounts, "TradingPartnerId");
+			console.log("getAssociatedAccounts:", products, $scope.data.associatedAccounts);
+
+			if(Array.isNotEmpty($scope.data.associatedAccounts))
+				$scope.showCCAndBCCButton = true;
+			$scope.showCCAndBCCInterface = false;
+
+			return $scope.data.associatedAccounts;
+		};
+
+		//on product selection, validate that:
+		//- Only one Product Group can be selected at a time
+		//- no Product(s) can be selected when a Product Group is selected
+		//- A Product Group can't be selected when a Product is selected
+
+		$scope.uniqueProductGroupValidation = function(products)
+		{
+			console.log("uniqueProductGroupValidation: model:", products, "selected products:", $scope.data.selectedProducts);
+
+			var selectedProductGroup = Array.isNotEmpty(products) &amp;&amp; products.find(p => p.isProductGroup);
+
+			if(selectedProductGroup &amp;&amp; Array.getCount(products) > 1)
+			{
+				products.pop(); //deselect last item
+				//Array.remove(products, selectedProductGroup);
+				//sl.product.deselectItem(sl.product.selectedItem);
+				$scope.redirectToRequestListPageFlag = false;
+				ToastService.toast($scope.labels.createRequest.productSelectionToast, "warning", 6000);
+			}
+			else if(!$scope.initialProductIdIsUpr){
+				$scope.getAssociatedPartners(products);
+			}
+		};
+
+		$scope.clearUIOnSelectionChange = function()
+		{
+			console.log("clearUIOnSelectionChange", $scope.data.requestType);
+			//clear selected forms
+			$scope.data.selectedDocumentTemplates = [];
+
+			//trading partner: clear product selection
+			if ($scope.data.requestType == "tp")
+			{
+				$scope.data.selectedProducts = [];
+				$scope.data.associatedAccounts = [];
+
+				if(Array.isEmpty($scope.data.selectedPartners)){
+					resetCCAndBCCFields();
+					$scope.data.tradingPartnerIds = [];
+				}
+			}
+			//product: clear trading partner selection
+			else if ($scope.data.requestType == "product")
+			{
+				$scope.data.selectedPartners = [];
+				$scope.data.tradingPartnerIds = [];
+				if(Array.isEmpty($scope.data.associatedAccounts)) {
+					resetCCAndBCCFields();
+				}
+			}
+		};
+
+		$scope.openFormList = function() {
+			$scope.openFormModal = true;
+			$scope.data.tradingPartnerIds = $scope.getTradingPartnerIds();
+		};
+
+		$scope.openDocument = function(template)
+		{
+			if(!template || !template.Id) return;
+
+			//if form already created: reopen same form instance
+			if(!$scope.selectedAndProcessedDocuments)
+				$scope.selectedAndProcessedDocuments = [];
+			var selectedDocument = $scope.selectedAndProcessedDocuments.find(d => d.documentId == template.Id);
+			if(selectedDocument)
+				return $scope.openForm(selectedDocument.containerId);
+
+			//if form not yet created: create form instance, then open it
+			$scope.data.tradingPartnerIds = $scope.getTradingPartnerIds();
+			var selectedProductIds = Array.isEmpty($scope.data.selectedProducts) ? [] : $scope.data.selectedProducts.distinct("Id", true);
+			template.fetching = true;
+			return RemoteActionService.callRemoteAction("fetchContainerInstance", [template.Id, selectedProductIds, $scope.data.tradingPartnerIds], function(resultInstanceId)
+			{
+				template.fetching = false;
+				$scope.selectedAndProcessedDocuments.push({ documentId: template.Id, containerId: resultInstanceId });
+				$scope.openForm(resultInstanceId);
+			});
+		};
+
+		//validate all selected container templates, with or without container instance id
+		$scope.validateSelectedContainers = function()
+		{
+		//for each selected document, check if container instance already exists or not
+			var selectedContainers = [];
+			angular.forEach($scope.data.selectedDocumentTemplates, function(template)
+			{
+				var selectedDocument = $scope.selectedAndProcessedDocuments.find(d => d.documentId == template.Id);
+				if(!selectedDocument)
+					selectedDocument = { documentId: template.Id };
+				selectedContainers.push(selectedDocument);
+			});
+
+			return RemoteActionService.callRemoteAction("validateSelectedContainers", [selectedContainers], function(validationResults) {
+				angular.forEach($scope.data.selectedDocumentTemplates, function(template) {
+					if(validationResults[template.Id])
+						template.$validation = validationResults[template.Id];
+				});
+			}, $scope);
+		};
+
+		$scope.saveAsDraft = function()
+		{
+			$scope.showLoaderSaveDraft = true;
+			$scope.data.tradingPartnerIds = $scope.getTradingPartnerIds();
+			var comment = $scope.data.comment || "";
+			var dueDate = $scope.data.dueDate || "";
+			var selectedProductIds = Array.distinct($scope.data.selectedProducts, "Id", true);
+
+			//if we have opened a draft request then just update requestName, comments and date on request record
+			//else if the form was opened before click of "save as draft" button, selectedAndProcessedDocument will have container template Id and container Istance Id
+			//else create new container instance and then create request record
+			if($scope.requestId != null)
+			{
+				RemoteActionService.callRemoteAction("updateContainerAndRequest", [$scope.data.requestName, comment, dueDate, null, $scope.requestId], $scope.onSaveAsDraftSuccess);
+			}
+			else if(Array.isNotEmpty($scope.selectedAndProcessedDocuments))
+			{
+				var templateId = $scope.selectedAndProcessedDocuments[0].documentId;
+				var containerInstanceId = $scope.selectedAndProcessedDocuments[0].containerId;
+				RemoteActionService.callRemoteAction("createDraftRequest", [templateId, containerInstanceId, selectedProductIds, $scope.data.tradingPartnerIds, $scope.data.requestName, comment, dueDate], function(result)
+				{
+					$scope.selectedAndProcessedDocuments[0].requestId = result.requestId;
+					$scope.selectedAndProcessedDocuments[0].recipientId = result.recipientId;
+					$scope.selectedAndProcessedDocuments[0].uniqueKeyString = result.uniqueKeyString;
+					$scope.selectedAndProcessedDocuments[0].requestGlobalId = result.requestGlobalId;
+
+					//update uniqueKeyString field on request
+					$scope.requestId = result.requestId;
+					if($scope.requestId)
+						RemoteActionService.callRemoteAction("updateContainerAndRequest", [null, null, null, result.uniqueKeyString, $scope.requestId], $scope.onSaveAsDraftSuccess);
+					else
+						$scope.onSaveAsDraftSuccess();
+				}).catch(ToastService.toastRemoteActionError);
+			}
+			else
+			{
+				var templateId = $scope.data.selectedDocumentTemplates[0].Id;
+				RemoteActionService.callRemoteAction("fetchContainerInstance", [templateId, selectedProductIds, $scope.data.tradingPartnerIds], function(resultInstanceId)
+				{
+					RemoteActionService.callRemoteAction("createDraftRequest", [templateId, resultInstanceId, selectedProductIds, $scope.data.tradingPartnerIds, $scope.data.requestName, comment, dueDate], function(result)
+					{
+						$scope.selectedAndProcessedDocuments.push({
+							documentId: templateId,
+							containerId: resultInstanceId,
+							requestId: result.requestId,
+							recipientId: result.recipientId,
+							uniqueKeyString: result.uniqueKeyString,
+							requestGlobalId: result.requestGlobalId
+						});
+
+						//update uniqueKeyString field on request
+						$scope.requestId = result.requestId;
+						if($scope.requestId)
+							RemoteActionService.callRemoteAction("updateContainerAndRequest", [null, null, null, result.uniqueKeyString, $scope.requestId], $scope.onSaveAsDraftSuccess);
+						else
+							$scope.onSaveAsDraftSuccess();
+					}).catch(ToastService.toastRemoteActionError);
+				});
+			}
+		};
+
+		$scope.onSaveAsDraftSuccess = function() {
+			$scope.showLoaderSaveDraft = false;
+			ToastService.toast($scope.labels.createRequest.requestSavedAsDraft, "success");
+			$timeout( () => window.history.back(), 3000);
+		};
+
+		$scope.removeDocument = function(templateId)
+		{
+			Array.remove($scope.data.selectedDocumentTemplates, templateId, "Id");
+			var selectedDocument = $scope.selectedAndProcessedDocuments.find(d => d.documentId == templateId);
+			if(selectedDocument) {
+			//if an instance of this template was created: delete it
+				Array.remove($scope.selectedAndProcessedDocuments, selectedDocument, "documentId");
+				RemoteActionService.callRemoteAction("removeContainerInstance", [selectedDocument.containerId]);
+			}
+		};
+
+		$scope.getTradingPartnerIds = function()
+		{
+			if($scope.data.requestType == "product")
+				return Array.isEmpty($scope.data.associatedAccounts) ? [] : $scope.data.associatedAccounts.distinct("TradingPartnerId", true);
+
+			var tradingPartnerIds = [];
+			angular.forEach($scope.data.selectedPartners, function(partner)
+			{
+				if(partner.TradingPartnerType == "tp")
+				{
+					if(!tradingPartnerIds.includes(partner.TradingPartnerId))
+						tradingPartnerIds.push(partner.TradingPartnerId);
+				}
+				else if(partner.TradingPartnerType == "group") {
+					angular.forEach(partner.TradingPartnerGroupMembers, function(member)
+					{
+						var accountId = CommonUtils.getVar("Account__c", member);
+						if(!tradingPartnerIds.includes(accountId))
+							tradingPartnerIds.push(accountId);
+					});
+				}
+			});
+
+			console.log("getTradingPartnerIds", $scope.data.requestType, tradingPartnerIds);
+			return tradingPartnerIds;
+		};
+
+		$scope.getTradingPartnerNames = function()
+		{
+			if($scope.data.requestType == "product")
+				return Array.isEmpty($scope.data.associatedAccounts) ? [] : $scope.data.associatedAccounts.distinct("TradingPartnerName", true);
+
+			var tradingPartnerNames = [];
+			angular.forEach($scope.data.selectedPartners, function(partner)
+			{
+				if(partner.TradingPartnerType == "tp")
+				{
+					if(!tradingPartnerNames.includes(partner.TradingPartnerName))
+						tradingPartnerNames.push(partner.TradingPartnerName);
+				}
+				else if(partner.TradingPartnerType == "group") {
+					angular.forEach(partner.TradingPartnerGroupMembers, function(member)
+					{
+						var accountId = CommonUtils.getVar("Account__r.Name", member);
+						if(!tradingPartnerNames.includes(accountId))
+							tradingPartnerNames.push(accountId);
+					});
+				}
+			});
+
+			console.log("getTradingPartnerNames", $scope.data.requestType, tradingPartnerNames);
+			return tradingPartnerNames;
+		};
+
+		$scope.isSendButtonDisabled = function()
+		{
+			$scope.allFormsValid = Array.isNotEmpty($scope.data.selectedDocumentTemplates)
+			&amp;&amp; $scope.data.selectedDocumentTemplates.every(t => t.$validation &amp;&amp; t.$validation.valid);
+
+			return !$scope.isDateValid || !$scope.data
+		|| Array.isEmpty($scope.data.selectedDocumentTemplates)
+		|| Array.isEmpty($scope.data.selectedPartners) &amp;&amp; Array.isEmpty($scope.data.associatedAccounts);
+		};
+
+		$scope.openDeleteDialog = function()
+		{
+			$scope.deleteDraftDialog.visible = true;
+		};
+
+		$scope.createAndSubmitRequest = function(){
+			$scope.showLoader = true;
+			$scope.buttonDisabled = true;
+			$scope.redirectToRequestListPageFlag = true;
+
+			if(Array.isNotEmpty($scope.newRequestDetails)){
+				$scope.newRequestTable.columns = $scope.newRequestTable.columns.filter(function(obj) {
+					return obj.label !== "Type";
+				});
+			}
+
+			if(Array.isNotEmpty($scope.previousRequests)){
+				$scope.sendRequestTable.columns = $scope.sendRequestTable.columns.filter(function(obj) {
+					return obj.label !== "Type";
+				});
+			}
+
+			$scope.relatedRequestId  = $scope.data.relatedRequest  ? $scope.data.relatedRequest.Id  : "";
+
+			$scope.containerTemplatesExplicit = $scope.data.selectedDocumentTemplates.map(function(t) {
+				return { Id: t.Id, DataName: t.name, ParentDataName: t.ParentDataName };
+			});
+
+			//List to store all selected trading partner Names to show on success Popup
+			$scope.data.tradingPartnerNames = $scope.getTradingPartnerNames().sortStrings();
+
+			$scope.ccUserListExplicit  = Array.isEmpty($scope.data.ccUserList) ? [] : $scope.data.ccUserList.map(function(u) {
+				return { Id: u.Id, LastName: u.LastName, FirstName: u.FirstName, Email: u.Email };
+			});
+
+			$scope.bccUserListExplicit = Array.isEmpty($scope.data.bccUserList) ? [] : $scope.data.bccUserList.map(function(u) {
+				return { Id: u.Id, LastName: u.LastName, FirstName: u.FirstName, Email: u.Email };
+			});
+
+			$scope.data.tradingPartnerIds = $scope.getTradingPartnerIds();
+			$scope.tradingPartnersDataExplicit = $scope.data.tradingPartnerIds;
+
+			$scope.data.dueDate = $scope.data.dueDate || "";
+			$scope.data.comment = $scope.data.comment || "";
+
+			if(String.isBlank($scope.data.requestName))
+				$scope.data.requestName = $scope.getRequestName();
+
+			RemoteActionService.callRemoteAction("validateRequestsToBeSent", [
+				$scope.tradingPartnersDataExplicit,
+				$scope.data.requestName,
+				$scope.data.selectedProducts,
+				$scope.data.requestType,
+				$scope.data.dueDate,
+				$scope.data.comment,
+				$scope.containerTemplatesExplicit,
+				$scope.relatedRequestId,
+				$scope.selectedAndProcessedDocuments,
+				$scope.ccUserListExplicit, $scope.bccUserListExplicit,
+				false],
+
+			function(result)
+			{
+				$scope.showLoader = false;
+				$scope.newRequestDetails = result.newRequestDetails;
+				$scope.showSendMessage = result.messageValue;
+				$scope.previousRequests = result.previousRequests;
+				//message for requests that was never sent before.
+				if(Array.isNotEmpty($scope.newRequestDetails))
+				{
+					if($scope.data.requestType === 'tp')
+						$scope.newRequestSendMes = $scope.labels.createRequest.pleaseSelect + ' ' + $scope.labels.common.partner + ' ' + $scope.labels.createRequest.requestFor;
+					else
+						$scope.newRequestSendMes = $scope.labels.createRequest.pleaseSelect + ' ' + $scope.labels.common.product + ' ' + $scope.labels.createRequest.requestFor;
+				}
+
+				if(Array.isNotEmpty($scope.newRequestDetails)){
+					$scope.newRequestTable = $scope.typeColDisplay($scope.newRequestDetails, $scope.newRequestTable);
+					$scope.newRequestDetails.sort(function(a, b) {
+						if(a.type &lt; b.type) return 1;
+						if(a.type > b.type) return -1;
+						return 0;
+					}) ;
+				}
+
+				if(Array.isNotEmpty($scope.previousRequests)){
+					$scope.sendRequestTable = $scope.typeColDisplay($scope.previousRequests, $scope.sendRequestTable);
+					$scope.previousRequests.sort(function(a, b) {
+						if(a.type &lt; b.type) return 1;
+						if(a.type > b.type) return -1;
+						return 0;
+					}) ;
+				}
+				if (result.messageType == "Information")
+				{
+					$scope.showModalBox = false;
+					$scope.openSuccessModal = true;
+					return false;
+				}
+
+				if (result.messageType == "ProductError") {
+					$scope.showModalBox = false;
+					$scope.openProductErrorModal = true;
+					return false;
+				}
+
+				//AP-195
+				if(Array.isNotEmpty(result.newRequestTPId)){
+					for(var i = 0; i &lt; result.newRequestTPId.length; i++){
+						Array.remove($scope.tradingPartnersDataExplicit, result.newRequestTPId[i]);
+					}
+				}
+				$scope.requestSents = result.requestSents;
+				$scope.confirmationSendDialogVisibility = true;
+				console.log($scope.previousRequests, "checklength", result);
+			}, $scope);
+		};
+
+		$scope.typeColDisplay = function(dataObjects, table){
+			var flag = false;
+			angular.forEach(dataObjects, function(col)
+			{
+				if(col.type != '')
+				{
+					flag = true;
+				}
+
+			});
+			if(flag &amp;&amp; (table.columns.find(x => x.field === "type")) == undefined )
+			{
+				table.columns.splice(3, 0, { field: "type", label: "Type", align: "center", sortable: true});
+			}
+			return table;
+		};
+
+		/* Mom says clean up your room... */
+		$scope.cleanUpAndCancel = function() {
+			if($scope.requestId != null)
+			{
+				window.history.back();
+			}
+			else
+			{
+				$scope.cancelling = true;
+				RemoteActionService.callRemoteAction("cleanUpContainersAndRequests", [$scope.selectedAndProcessedDocuments], function() {
+					window.history.back();
+				});
+			}
+		};
+
+		$scope.cleanUpAndCancelForDraft = function()
+		{
+			$scope.deleting = true;
+			RemoteActionService.callRemoteAction("cleanUpContainersAndRequestsForDraft", [$scope.selectedAndProcessedDocuments], function() {
+				$scope.deleting = false;
+				if(!$scope.isDraftCreated &amp;&amp; !$scope.createNewRequest)
+				{
+					window.history.back();
+				}
+			});
+		};
+
+		$scope.sendExplicitNo = function()
+		{
+			angular.forEach($scope.previousRequests, function(prevReq){ prevReq.isSelected = false; });
+			angular.forEach($scope.newRequestDetails, function(sentReq){ sentReq.isSelected = false; });
+			$scope.disableYesBtn = false;
+			$scope.sendExplicit();
+		};
+
+		$scope.sendExplicit = function()
+		{
+			$scope.data.tradingPartnerIds = $scope.getTradingPartnerIds();
+			$scope.sentRqss = [];
+			$scope.data.assignTo = $scope.data.assignTo ? $scope.data.assignTo.Id : null;
+			
+			//combining both new requests and previously sent requests to check for  selected items.
+			$scope.previousRequests = Array.isEmpty($scope.previousRequests) ? [] : $scope.previousRequests;
+			$scope.newRequestDetails = Array.isEmpty($scope.newRequestDetails) ? [] : $scope.newRequestDetails;
+			var combine = $scope.previousRequests.concat($scope.newRequestDetails);
+			console.log(combine);
+			angular.forEach(combine, function(prevReq)
+			{
+				if(prevReq.isSelected)
+				{
+					if(String.isEmpty(prevReq.productId)){
+						prevReq.productId = null;
+					}
+
+					if(String.isEmpty(prevReq.UPrId)){
+						prevReq.UPrId = null;
+					}
+					$scope.sentRqss.push(prevReq.partnerId + ":" + prevReq.formId + ":" + prevReq.productId + ":" + prevReq.UPrId);
+					//AP-232
+					if(!$scope.tradingPartnersDataExplicit.includes(prevReq.partnerId)){
+						$scope.tradingPartnersDataExplicit.push(prevReq.partnerId);
+					}
+				}
+				else { //AP-232 //AP-201
+				//AP-225
+					var tradingPartnersAux = prevReq.partnerId;
+					// if($scope.tradingPartnersDataExplicit.length > 1){
+					// 	Array.remove($scope.tradingPartnersDataExplicit, prevReq.partnerId);
+					// }
+					$scope.data.tradingPartnerIds.push(tradingPartnersAux);
+				}
+			});
+			RemoteActionService.callRemoteAction("sendExplicitRequest", [
+				$scope.sentRqss,
+				$scope.tradingPartnersDataExplicit,
+				$scope.data.requestName,
+				$scope.data.selectedProducts,
+				$scope.data.requestType,
+				$scope.data.dueDate,
+				$scope.data.comment,
+				$scope.data.appendProductName,
+				$scope.data.appendTradingPartnerName,
+				$scope.containerTemplatesExplicit,
+				$scope.relatedRequestId,
+				$scope.selectedAndProcessedDocuments,
+				$scope.ccUserListExplicit,
+				$scope.bccUserListExplicit,
+				$scope.requestSents,
+				$scope.data.assignTo],
+			function(result)
+			{
+				console.log("sendExplicitRequest: result", result);
+				//$scope.redirectToRequestListPage();
+				$scope.confirmationSendDialogVisibility = false;
+				if(result == "No request sent")
+					$scope.buttonDisabled = false;
+				else {
+					$scope.showSuccessMessage = true;
+					$scope.successMessage = result;
+				}
+			});
+		};
+
+		$scope.openForm = function(id) {
+
+			NavigationService.goToPage("FormView", {'id': id, 'refreshopener': 'off'}, "FormView");
+		};
+
+		$scope.redirectToRequestListPage = function() {
+			if($scope.redirectToRequestListPageFlag)
+				NavigationService.goToObjectList($scope.objectPrefix, null, null);
+		};
+
+		$scope.goToObject = function(id) {
+			NavigationService.goToObject(id, "", "details"); 
+		};
+
+		$scope.selectPartner  = function(p)
+		{
+			if(p &amp;&amp; p.partnerId)
+				$scope.goToObject(p.partnerId);
+		};
+
+		$scope.selectProduct = function(p)
+		{
+			if(p &amp;&amp; p.productId)
+				$scope.goToObject(p.productId);
+		};
+
+		$scope.checkBoxesChecked = function(p)
+		{
+			console.log("checkBoxesChecked", $scope.previousRequests);
+			//disable Yes Button if no request selected.
+			$scope.previousRequests = Array.isEmpty($scope.previousRequests) ? [] : $scope.previousRequests;
+			$scope.newRequestDetails = Array.isEmpty($scope.newRequestDetails) ? [] : $scope.newRequestDetails;
+			var combine = $scope.previousRequests.concat($scope.newRequestDetails);
+			$scope.disableYesBtn = combine.every(r => r &amp;&amp; !r.isSelected);
+		};
+
+		$scope.runStencil = function()
+		{
+			$timeout(function() {$scope.pageLoaded = true;}, 1000);
+		};
+
+		//Initialize some data on the page when it loads
+		$scope.init();
+		$scope.runStencil();
+	}
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

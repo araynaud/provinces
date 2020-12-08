@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Module: common/services/RemoteActionService</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Module: common/services/RemoteActionService</h1>
+
+    
+
+
+
+
+<section>
+
+<header>
+    
+        
+            
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+            <div class="description">Service containing functions to call Remote Action methods from angular page controllers and components</div>
+        
+
+        
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line77">line 77</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <h5>Examples</h5>
+    
+    <pre class="prettyprint"><code>//General use cases
+RemoteActionService.call(method, args)
+RemoteActionService.call(method, args, thenFunction)
+
+RemoteActionService.call(method, args, outputElement)
+
+RemoteActionService.call(method, args, outputElement, outputObject)
+RemoteActionService.call(method, args, outputElement, outputObject, finallyFunction)
+RemoteActionService.call(method, args, thenFunction, finallyFunction)
+
+- method = method name or namespace.controllerClass.method .
+Note: If only method name passed, the service determines automatically which class it belongs to (method names must be unique on the page for that).
+
+- args : array or arguments passed to the Remote Action. The order and Type of each argument must match the Apex Remote Action method signature.
+- thenFunction and finallyFunction = function(result) { ... }</code></pre>
+
+    <pre class="prettyprint"><code>//remote action called without arguments.
+//result is not stored or processed in the service, but then, catch, finally can be used on the returned promise (see other examples below).
+RemoteActionService.callRemoteAction("getAllPicklistOptions");
+RemoteActionService.callRemoteAction("getAllPicklistOptions", []);</code></pre>
+
+    <pre class="prettyprint"><code>//remote action called with 1 argument.
+//result is not stored or processed in the service, but then, catch, finally can be used on the returned promise (see other examples below).
+RemoteActionService.callRemoteAction('saveData', [ data ]);</code></pre>
+
+    <pre class="prettyprint"><code>//remote action called with 2 arguments.
+//pass controller or its $scope as output object
+//Remote Action Result is stored in $scope.convertToPdfResult;
+//$scope.loading can be used in view to show progress loader
+RemoteActionService.callRemoteAction("convertToPdf", [ containerId, pdfDocument.name ], "convertToPdfResult", $scope);</code></pre>
+
+    <pre class="prettyprint"><code>//pass controller or its scope as output object
+var promise = RemoteActionService.callRemoteAction('convertToPdf', args, function (result) {
+	svc.pdfContentVersionId = result;
+	// do other things ...
+}, $scope);</code></pre>
+
+    <pre class="prettyprint"><code>//with promise.then
+var promise = RemoteActionService.callRemoteAction('convertToPdf', args).then(function (result)
+{
+	svc.pdfContentVersionId = result;
+	// do other things ...
+}, $scope);</code></pre>
+
+    <pre class="prettyprint"><code>//with error handling
+var promise = RemoteActionService.callRemoteAction('convertToPdf', args, function (result) {
+	svc.pdfContentVersionId = result;
+});
+
+//error handler
+promise.catch(function(error) {
+	console.error("TabService.convertToPdf error", error.message, error);
+	ToastService.toast(error.message, "error", 0);
+});</code></pre>
+
+
+
+        
+    
+    </div>
+
+    
+
+    
+        <h3 class="subsection-title">Requires</h3>
+
+        <ul>
+            <li><a href="module-common_services_RemoteActionFactory.html">module:common/services/RemoteActionFactory</a></li>
+        
+            <li>module:common/services/CommunUtils</li>
+        
+            <li>module:$q</li>
+        </ul>
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+        <h3 class="subsection-title">Methods</h3>
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~callControllerRemoteAction"><span class="type-signature">(inner) </span>callControllerRemoteAction<span class="signature">(controller, method, args, outputElement, outputObject, after)</span><span class="type-signature"> &rarr; {Promise}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    call a remote action from a specificed controller, then same as <a href="module-common_services_RemoteActionService.html#~callRemoteAction">callRemoteAction</a>
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>controller</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">controller class name</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>method</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">method name</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>args</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">arguments passed to the Remote Action method</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>outputElement</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+|
+
+<span class="param-type">function</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">string: variable name to store result in outputObject[outputElement] <br/> function(result): do something with result (like promise.then)</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>outputObject</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">outputObject</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>after</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">function called after result is processed (promise.finally function)</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line414">line 414</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    Promise from RemoteActionFactory / $q
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Promise</span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~callMultipleActions"><span class="type-signature">(inner) </span>callMultipleActions<span class="signature">(Array, index:)</span><span class="type-signature"></span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    Call multiple remote actions in sequence. When each action completes, call next one.
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>Array</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array.&lt;Object></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">of remote action arguments<br/>[ { method: "name", args: [...], outputElement: "result", outputObject: vm }, {...} ]</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>index:</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">number</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">which action to start with (by default: 0)</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line433">line 433</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+    <dt class="tag-see">See:</dt>
+    <dd class="tag-see">
+        <ul>
+            <li><a href="module-common_services_RemoteActionService.html#~callRemoteAction">module:common/services/RemoteActionService~callRemoteAction</a></li>
+        </ul>
+    </dd>
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    promise for the 1st remote action call
+</div>
+
+
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~callRemoteAction"><span class="type-signature">(inner) </span>callRemoteAction<span class="signature">(method, args, outputElement, outputObject, after)</span><span class="type-signature"> &rarr; {Promise}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    call a remote action with arguments and process its result.<br/>
+		Can also be used as <b>RemoteActionService.call</b>.
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>method</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">method name. If only method name passed, the service determines which class it belongs to (method names must be unique on the page for that).</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>args</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">Array</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">arguments passed to the Remote Action method</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>outputElement</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+|
+
+<span class="param-type">function</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">string: variable name to store result in outputObject[outputElement] <br/> function(result): do something with result (like promise.then)</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>outputObject</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">where to store result (by default: this RemoteActionService). Also stores .loading variable indicating if action is in progress</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>after</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">function called after result is processed (Promise.finally function)</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line326">line 326</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    Promise from RemoteActionFactory / $q. Can be used with .then(), .catch() and .finally() from outside this service.
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Promise</span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~listRemoteActionControllers"><span class="type-signature">(inner) </span>listRemoteActionControllers<span class="signature">(withPrefix)</span><span class="type-signature"> &rarr; {Array.&lt;string>}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    class names of available remote actions on current page
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>withPrefix</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">boolean</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">true: results with namespace.className, else: className only</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line216">line 216</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    - list of class names (with or witout namespace prefix)
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Array.&lt;string></span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+    <h5>Examples</h5>
+    
+    <pre class="prettyprint"><code>//class names only
+		RemoteActionService.listRemoteActionControllers()
+		[ "FileUploadController", "FormViewController", "LabSelectionUtil" ]
+
+		</code></pre>
+
+    <pre class="prettyprint"><code>//with namespace prefix
+		RemoteActionService.listRemoteActionControllers(true)
+		[ "arthurdev1.FileUploadController", "arthurdev1.FormViewController", "arthurdev1.LabSelectionUtil" ]</code></pre>
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~listRemoteActionNames"><span class="type-signature">(inner) </span>listRemoteActionNames<span class="signature">(className, withPrefix)</span><span class="type-signature"> &rarr; {Array.&lt;string>}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    list method names of available remote actions on current page, with namespace.class prefix or not
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>className</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">className or "*" for all classes</td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>withPrefix</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">boolean</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">true: results with namespace.class prefix / else: method name only</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line244">line 244</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    - list of remote action names ()
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">Array.&lt;string></span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+    <h5>Examples</h5>
+    
+    <pre class="prettyprint"><code>//remote actions from default controller class
+		RemoteActionService.listRemoteActionNames()
+		[ "closeSelectedTasks", "deleteListView", ... ]
+
+		</code></pre>
+
+    <pre class="prettyprint"><code>//remote actions from specified class
+		RemoteActionService.listRemoteActionNames("RelationshipUtil")
+		[ "addNewTag","cancelButtonActionForTags", ...]
+
+		</code></pre>
+
+    <pre class="prettyprint"><code>//remote actions from specified class with prefix
+		RemoteActionService.listRemoteActionNames("RelationshipUtil", true)
+		[ "arthurdev1.RelationshipUtil.addNewTag", "arthurdev1.RelationshipUtil.cancelButtonActionForTags", ... ]
+
+		</code></pre>
+
+    <pre class="prettyprint"><code>//remote actions from all classes with prefix
+		RemoteActionService.listRemoteActionNames("*", true)
+		[ "arthurdev1.TaskListController.closeSelectedTasks", "arthurdev1.RelationshipUtil.addNewTag", ... ]</code></pre>
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~listRemoteActions"><span class="type-signature">(inner) </span>listRemoteActions<span class="signature">(className)</span><span class="type-signature"> &rarr; {object|Array.&lt;object>}</span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    list available remote actions on current page
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>className</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">optional</span>
+|
+
+<span class="param-type">string</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">className or "*" for all classes</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line189">line 189</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<h5>Returns:</h5>
+
+        
+<div class="param-desc">
+    remoteAction[] for 1 class
+		<br/>or Object { className: remoteAction[] } for all classes
+		<br/>
+		remoteAction = {
+			"name": "deleteAnswerDocumentReference",
+			"len": 1,
+			"ns": "arthurdev1",
+			"ver": 36,
+			"csrf": "VmpFPSxNakF4T0Mwd01pMHlNRlF3TmpveE1Ub3dPQzQzTnpSYSxGeHpYQXNHenl5YmhUNXdITTNDLWZPLE9HTmlaV1Zo"
+		}
+</div>
+
+
+
+<dl>
+    <dt>
+        Type
+    </dt>
+    <dd>
+        
+<span class="param-type">object</span>
+|
+
+<span class="param-type">Array.&lt;object></span>
+
+
+    </dd>
+</dl>
+
+    
+
+
+
+
+
+        
+            
+
+    
+
+    
+    <h4 class="name" id="~resolvePromise"><span class="type-signature">(inner) </span>resolvePromise<span class="signature">(data)</span><span class="type-signature"></span></h4>
+    
+
+    
+
+
+
+<div class="description">
+    Create a new promise, resolved promise instantly with data.
+		Useful for returning instantly without calling an action in code expecting promises.
+</div>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>data</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type">any</span>
+|
+
+<span class="param-type">Object</span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">result of the promise.</td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="common_app_services_RemoteActionFactory.js.html">common/app/services/RemoteActionFactory.js</a>, <a href="common_app_services_RemoteActionFactory.js.html#line460">line 460</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+    
+
+    
+
+    
+</article>
+
+</section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:02 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

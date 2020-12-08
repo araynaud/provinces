@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/editField/editForm.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/editField/editForm.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/editForm
+@description Displays a model object in a form with a list of edit-field elements according to their properties
+
+@param model        {object[]}                =
+@param fields       {optional|String}         =?
+@param fieldNames   {optional|String}         @
+@param columns      {optional|Number}         =? Number of columns for this form
+
+@param actions      {object[]}                = List of action buttons
+@param buttonAlign  {optional|String}         @ CSS Property
+@param variable     {optional|String}         @ global variable name for this instance
+@param readOnly     {object[]}                = read Only Fileds
+
+@example
+
+&lt;edit-form variable="{{vm.variable}}.editForm" model="vm.model" fields="vm.fields" field-names="vm.fieldNames">&lt;/edit-form>
+*/
+
+module.exports = function (ngModule)
+{
+
+/* Creates a form to display / edit properties of any object.
+Examples:
+
+&lt;edit-form variable="editForm1" model="vm.bom.current.variants[0]" fields="vm.deleteRelatedProductDialog.fields" actions="vm.deleteRelatedProductDialog.actions">&lt;/edit-form>
+&lt;edit-form variable="editForm2" model="vm.bom.current" field-names="variants.0.product.name, variants.0.product.productIds, genericProduct.name, genericProduct.productIds" actions="vm.deleteRelatedProductDialog.actions">&lt;/edit-form>
+*/
+
+	ngModule.component('editForm', {
+		bindings: {
+			model: '=?',
+			fields: '=?',
+			fieldNames: '@',
+			actions: '=?',
+			buttonAlign: '@',
+			variable: '@',
+			readOnly: '=?',
+			columns: '=?'
+		},
+		template: require('./editForm.html'),
+		controllerAs: 'vm',
+		controller: EditFormController
+	});
+
+	function EditFormController($scope, $element, CommonUtils, NavigationService)
+	{
+		var vm = this;
+		CommonUtils.setVar(vm.variable, vm);
+
+		vm.$onInit = function()
+		{
+			if(!vm.buttonAlign)
+				vm.buttonAlign = "left";
+
+			if(vm.fieldNames &amp;&amp; Array.isEmpty(vm.fields))
+			{
+				if(angular.isString(vm.fieldNames))
+					vm.fieldNames = String.split(vm.fieldNames, ",", true, true);
+				if(Array.isNotEmpty(vm.fieldNames))
+					vm.fields = vm.fieldNames.map(function(f) { return { field: f, label: CommonUtils.getLabel(f, true) }; });
+			}
+		};
+
+		//action button functions
+		vm.doAction = function(action) {
+			if(action.click) action.click(vm.model);
+		};
+
+		//display button text. can be constant or a function
+		vm.getButtonText = function(action) {
+			return CommonUtils.getPropertyValue(action, "text");
+		};
+
+		//condition to show button or field
+		vm.show = function(action) {
+			return CommonUtils.isMissing(action.show) || CommonUtils.getPropertyValue(action, "show") || false;
+		};
+
+		//condition to disable button
+		vm.disableButton = function(action)
+		{
+			return CommonUtils.getPropertyValue(action, "disabled")
+				|| CommonUtils.getPropertyValue(action, "disable")
+				|| CommonUtils.getPropertyValue(action, "showLoader")
+				|| false;
+		};
+
+		vm.showLoader = function(action) {
+			return CommonUtils.getPropertyValue(action, "showLoader") || false;
+		};
+
+		vm.getFieldValue = function(field) {
+			return field &amp;&amp; CommonUtils.getVar(field.field, vm.model);
+		};
+
+		vm.fieldClasses = function(field, index) {
+			var classes = { 'slds-required': field.required, 'slds-has-error': field.required &amp;&amp; String.isEmpty(vm.model[field.field]),
+				'slds-p-right--small': true, 'slds-p-left--small': index == 0 };
+			if(!vm.columns) return classes;
+
+			var col = field.columns || 1;
+			var colClass = String.format("slds-size--{0}-of-{1}", col, vm.columns);
+			classes[colClass] = true;
+
+			if(String.isNotEmpty(field.classes))
+				classes[field.classes] = true;
+
+			return classes;
+		};
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

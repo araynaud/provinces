@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: formview/app/components/reUseForm/reUseForm.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: formview/app/components/reUseForm/reUseForm.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module formview/commponents/reUseForm
+@Description This component is for reusing form data from another instance of the same form template.
+@param model            {optional|Object}   = object to display
+
+@example
+&lt;re-use-form ng-if="vm.settings.hasOtherInstances &amp;&amp; vm.isEditable()" model="vm.model">&lt;/re-use-form>
+*/
+
+module.exports = function (ngModule) {
+
+	ngModule.component('reUseForm', {
+		bindings: { model: '=' },
+		template: require("./reUseForm.html"),
+		controllerAs: 'vm',
+		controller: ReUseFormController
+	});
+
+	ReUseFormController.inject = ['CommonUtils', 'NavigationService', 'TabService'];
+	function ReUseFormController ( CommonUtils,   NavigationService,   TabService )
+	{
+		var vm = this;
+		if(NavigationService.debug)
+			window.reUseForm = vm;
+
+		//init state
+		vm.$onInit = function()
+		{
+			vm.containerId  = CommonUtils.getVar("formViewSettings.containerGlobalId");
+			vm.templateName = CommonUtils.getVar("formViewSettings.container.containerTemplate.name");
+
+			vm.openReUseForm = false;
+			vm.showBar = true;
+			vm.loadFormSuccess = false;
+			vm.instanceName = '';
+			vm.informationDialogNoAnswers = false;
+			vm.showSpinner = false;
+			vm.nbAnswers = 0;
+			vm.options = { clearAll: true, keep: false, copyTables: true };
+
+			vm.optionFields = [
+				{ field: "clearAll",      type: "checkbox", label: "Clear current answers" },
+				{ field: "keep",  type: "checkbox", label: "Keep current answers" },
+				{ field: "copyTables", type: "checkbox", label: "Copy Tables", description: "Copy all table sections answers from selected form." }
+			];
+
+			vm.columns = [
+				{ field: "$selected", label: " ", sortable: false, type: "checkbox", selectAll: false, readOnly: false, change: vm.selectRow },
+				//{ field: "Id" },
+				//{ field: "Global_Id__c" },
+				{ field: "Name", label: "Form Name", click: vm.goToForm },
+				{ field: "Request__r.Name", label: "Request Name"},
+				{ field: "Version__c", label: "Version", align: "right" },
+				{ field: "Request__r.Requestor__r.Name", label: "Trading Partner" },
+				{ field: "ICIX_Product__r.Name", label: "Product" },
+				//{ field: "Request__r.Status__c" },
+				{ field: "LastModifiedDate", label: "Modified" }
+			];
+
+			vm.actions = [
+				{ text: "Apply Data", close: true, click: vm.applyFormData, disable: () => !vm.selectedInstance }
+			];
+
+		};
+
+		vm.loadData = function()  {
+			return TabService.checkPreviousInstances().then( () => vm.containerInstanceList = TabService.containerInstanceList || []);
+		};
+
+		// Close re-load bar.
+		vm.closeReLoadForm = function(){
+			vm.showBar = false;
+		};
+
+		vm.selectRow = function(row)
+		{
+			vm.selectedInstance = row.$selected ? row : null;
+
+			for( var i = 0; i &lt; Array.getCount(vm.containerInstanceList); i++)
+			{
+				if(vm.containerInstanceList[i] != row)
+					vm.containerInstanceList[i].$selected = false;
+			}
+		};
+
+		vm.goToForm = function(row)
+		{
+			NavigationService.goToPage("FormView", row.Id, "_blank");
+		};
+
+		//Get Selected Container_Instance__c and send back to parent.
+		//Get Container Answers for the ReUse load of the form.
+		vm.applyFormData = function()
+		{
+			if(!vm.selectedInstance)
+				return;
+
+			vm.getFormInstanceName();
+			vm.showSpinner = true;
+			TabService.getFormAnswers(vm.selectedInstance.Id).then(vm.loadAnswers);
+		};
+
+		//Updates the form fields with the ones from selected instance
+		//TODO: use different RemoteAction for loading + handle table sections using Multi_Response__c initTableSection code
+		vm.loadAnswers = function(result)
+		{
+			vm.informationDialogNoAnswers = Object.isEmpty(result);
+			if(vm.informationDialogNoAnswers)
+			{
+			//No answers to load, message/toast will be displayed.
+				vm.loadFormSuccess = false;
+				vm.informationDialogNoAnswers = true;
+				vm.showSpinner = false;
+				return;
+			};
+
+			TabService.loadAllTabs(false, function() {
+				vm.loadedAnswers = TabService.processAnswers(result);
+				vm.updateModel();
+			});
+		};
+
+		vm.updateModel = function()
+		{
+		//Set Form dirty true, makes Save available.
+			TabService.setFormDirty();
+			vm.loadFormSuccess = true;
+			vm.showSpinner = false;
+
+			//copy all: replace whole model with selected form
+			if(vm.options.copyAll)
+			{
+				vm.nbAnswers = vm.loadedAnswers ? Object.keys(vm.loadedAnswers).length : 0;
+				return vm.model = TabService.model = vm.loadedAnswers;
+			}
+
+			//clear all: clear all answers before updating
+			if(vm.options.clearAll)
+				TabService.clearFormModel(vm.model);
+
+			//or combine existing model with current form
+			vm.nbAnswers = 0;
+			var formulaQuestionIds = [];
+			for(var questionId in vm.loadedAnswers)
+			{
+				var element = TabService.getFormElement(questionId);
+				if(TabService.isFormula(element))
+					formulaQuestionIds.push(questionId);
+
+				if(!vm.replaceAnswer(questionId)) continue;
+
+				var value = vm.loadedAnswers[questionId];
+				console.log("updateModel:", questionId, value);
+				vm.nbAnswers++;
+				vm.model[questionId] = value;
+			}
+
+			//recalculate formulas after all answers are loaded
+			console.log("updateModel: formulaQuestionIds:", formulaQuestionIds);
+			angular.forEach(formulaQuestionIds, TabService.calculateFormula);
+
+			//copy table sections
+			if(vm.options.copyTables &amp;&amp; Object.isNotEmpty(vm.loadedAnswers.tables))
+			{
+				if(!vm.model.tables)
+					vm.model.tables = {};
+
+				for(var sectionId in vm.loadedAnswers.tables)
+				{
+					vm.model.tables[sectionId] = vm.loadedAnswers.tables[sectionId];
+					vm.nbAnswers += vm.loadedAnswers.tables[sectionId].nbAnswers;
+				}
+			}
+		};
+
+		//true : replace answer or false: skip updating answer
+		vm.replaceAnswer = function(questionId)
+		{
+			var element = TabService.getFormElement(questionId);
+			if(!element)
+				return console.log("updateModel: element", questionId, "not found. skipping...");
+
+			if(TabService.isFormula(element))
+				return console.log("updateModel:", questionId, "is formula. skipping...");
+
+			if(TabService.isReadOnly(element))
+				return console.log("updateModel:", questionId, "is read-only. skipping...");
+
+			if(!vm.options.attachFiles &amp;&amp; element.type == "upload")
+				return console.log("updateModel:", questionId, "is upload. skipping...");
+
+			if(vm.options.keep &amp;&amp; vm.model[questionId] &amp;&amp; element.type.includes('nutritional') &amp;&amp; vm.hasNutritionalData(vm.model[questionId]))
+				return console.log("updateModel:", questionId, vm.model[questionId], "nutritional is not blank. skipping...");
+
+			if(vm.options.keep &amp;&amp; vm.model[questionId] &amp;&amp; !element.type.includes('nutritional'))
+				return console.log("updateModel:", questionId, vm.model[questionId], "is not blank. skipping...");
+
+			if(element.type == "lab selection")
+				return console.log("updateModel:", questionId, vm.model[questionId], "is lab selection. skipping...");
+
+			return true;
+		};
+
+		//check if nutritional data answer is not empty
+		const NUTRITIONAL_DEFAULT_KEYS = ["v", "pc", "text"];
+		const NUTRITIONAL_DEFAULT_VALUES = ["=", "g"];
+
+		vm.hasNutritionalData = function (data)
+		{
+			if(Object.isEmpty(data))
+				return false;
+
+			for(var oldKey in data)
+			{
+				var oldValue = data[oldKey];
+				if(!oldValue) continue;
+
+				for(var key in oldValue)
+					if(oldValue[key] &amp;&amp; (NUTRITIONAL_DEFAULT_KEYS.includes(key) || !NUTRITIONAL_DEFAULT_VALUES.includes(oldValue[key])))
+						return true;
+			}
+
+			return false;
+		};
+
+		vm.getFormInstanceName = function() {
+			var version =  CommonUtils.getVar("Version__c", vm.selectedInstance);
+			var lastModifiedDate =  window.moment(vm.selectedInstance.LastModifiedDate).format("MM/DD/YYYY");
+			return vm.instanceName = String.format("{0}, v{1}, {2}", vm.selectedInstance.Name, version, lastModifiedDate);
+		};
+
+		vm.reloadPage = function() {
+			vm.showSpinner = true;
+			window.location.reload();
+		};
+
+		vm.reloadInitalValues = function()
+		{
+			vm.showSpinner = true;
+			var containerId = NavigationService.getParameter("Id");
+			TabService.getFormAnswers(containerId).then(function(result)
+			{
+				TabService.clearFormModel(vm.model);
+				if(!Object.isEmpty(result))
+					vm.loadAnswers(result);
+
+				vm.showSpinner = false;
+				vm.loadFormSuccess = false;
+				vm.informationDialogNoAnswers = false;
+			});
+		};
+	} //end ReUseFormController
+}; //end module.exports</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

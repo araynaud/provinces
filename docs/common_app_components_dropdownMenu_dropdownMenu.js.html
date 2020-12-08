@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/dropdownMenu/dropdownMenu.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/dropdownMenu/dropdownMenu.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/dropdownMenu
+
+@param {String[]|Object[]} actions      = Array of menu items. Actions can be String or Object {text: string, click: function(model,action) }
+@param {optional|function} click        = default function to run when clicking an item. function(model, action)
+@param {optional|any}      model        = data to pass to to action functions
+@param {optional|String}   align        @ left, center, right (default: inherit / left)
+@param {optional|String}   valign       @   vertical position of menu compared to its trigger button. top | default: bottom
+@param {optional|String}   position     @   position of menu in container default: fixed (default: absolute)
+@param {optional|String}   variable     @ global variable name
+
+@param {optional|String}   trigger      @  event type to open menu: click | hover (default: hover)
+@param {optional|Boolean}  triggerHover =? when true, enables dropdown on hover (default: true)
+@param {optional|Boolean}  triggerClick =? when true, enables dropdown on click (default: false)
+
+@param {optional|Object}   openInstance =? last open menu instance (to prevent multiple menus open at once). Set to current controller instance when opening menu / null when closing. Other menu instances sharing the same openInstance variable are closed when another opens.
+@param {object[]}          selectedItem =? Last selected item
+@param {optional|Boolean}  search       =?   if true: display search field / default: false
+@param {optional|String}   searchText   =?   search text field value
+
+@example
+&lt;dropdown-menu ng-if="vm.actions.length" actions="vm.actions" click="vm.defaultFunction" model="row" align="right">
+&lt;/dropdown-menu>
+
+@description
+Displays a dropdown menu from a list of clickable actions
+
+&lt;br/>&lt;br/>
+&lt;center>
+	&lt;img src="https://user-images.githubusercontent.com/21251436/37167013-878ba21a-22b5-11e8-8746-f859fc14b835.png"/>
+&lt;/center>
+
+@see {@link https://www.lightningdesignsystem.com/components/picklist/#content|PickList - Lightning Design System}
+*/
+
+module.exports = function (ngModule)
+{
+	'use strict';
+
+	ngModule.component('dropdownMenu', {
+		bindings: {
+			actions: '=', //list of actions dropdown menu at right of row
+			click: '=?', //TODO  pass menu-item-click function from header
+			trigger: '@', //type of event to open/close menu. click | default: hover
+			triggerHover: '=?',  //open/close on mouse in/out
+			triggerClick: '=?',  //open/close on click
+			model: '=',  //data to pass to to action functions
+			align: '@',  //left, center, right
+			variable: '@',  //global variable name
+			valign: '@',     //vertical alignment of menu relative to button. default: bottom | top
+			position: '@',   //position of menu in container default: fixed (default: absolute)
+			openInstance: '=?', //currently open menu instance (to have 1 open menu at a time)
+			selectedItem: '=?', //last selected item
+			showSelectedIcon: '=?',
+			search: '=?',	  //display search field
+			searchText: '=?'   //search field value
+		},
+		template: require('./dropdownMenu.html'),
+		controllerAs: 'vm',
+		controller: DropdownMenuController
+	});
+
+	DropdownMenuController.$inject = ['$scope', '$element', 'CommonUtils'];
+	function DropdownMenuController  ( $scope,   $element,   CommonUtils )
+	{
+		var vm = this;
+		vm.isOpen = false;
+		CommonUtils.setVar(vm.variable, vm);
+
+		const MAX_VISIBLE_ROWS = 10;
+
+		vm.$onInit = function()
+		{
+			vm.labels = window.labels;
+
+			if(!vm.align)  vm.align = "left";
+			if(!vm.valign) vm.valign = "bottom";
+
+			vm.classList = [ "slds-dropdown-trigger" ];
+			vm.parents = $element.parents();
+
+			if(!angular.isDefined(vm.triggerHover)) vm.triggerHover = true;
+			if(!angular.isDefined(vm.triggerClick)) vm.triggerClick = false;
+
+			if(String.isNotEmpty(vm.trigger)) {
+				vm.triggerHover = vm.trigger.includes("hover");
+				vm.triggerClick = vm.trigger.includes("click");
+			}
+		};
+
+		vm.open   = function() { return vm.toggle(true); };
+		vm.close  = function() { return vm.toggle(false); };
+
+		vm.getOptionLabel = item => CommonUtils.getItemValue(item, CommonUtils.OPTION_DISPLAY_FIELDS);
+
+		vm.toggle = function(state)
+		{
+			vm.isOpen = angular.isDefined(state) ? state : vm != vm.openInstance;
+			vm.openInstance = vm.isOpen ? vm : null;
+
+			//console.log("dropdownMenu", vm.variable || "", "toggle", vm.isOpen);
+			vm.positionMenu();
+
+			var doc = angular.element(document);
+			if(vm == vm.openInstance &amp;&amp; vm.position == "fixed")
+			{
+				vm.parents.on( "scroll", vm.closeHandler);
+				doc.on("scroll", vm.scrollHandler);
+				doc.on("click",  vm.clickOutsideHandler);
+			}
+			else if(vm.position == "fixed")
+			{
+				vm.parents.off( "scroll", vm.closeHandler);
+				doc.off("scroll", vm.scrollHandler);
+				doc.off("click",  vm.clickOutsideHandler);
+			}
+
+			return vm.isOpen;
+		};
+
+		vm.positionMenu = function()
+		{
+			if(vm.align)
+				vm.classes = "slds-dropdown--" + vm.align;
+
+			if(vm.valign == "top")
+				vm.classes += " slds-dropdown--bottom";
+
+			if(vm.position != "fixed" || Array.isEmpty(!$element)) return;
+
+			vm.box = $element[0].getBoundingClientRect();
+			vm.style = { position: vm.position };
+
+			if(vm.align == "right")
+				vm.style.right = (window.innerWidth - vm.box.right) + "px";
+			else // if(vm.align == "left")
+				vm.style.left = vm.box.left + "px";
+
+			//vertical positioning: if too low to fit in window, place to bottom of the screen
+			var visibleItems = vm.actions.filter(vm.showAction);
+			var menuHeight = 34 * Math.min(visibleItems.length, MAX_VISIBLE_ROWS);
+
+			if(vm.valign == "bottom") {
+				var top = vm.box.top + vm.box.height;
+				top = Math.min(top, window.innerHeight - menuHeight);
+				vm.style.top = top + "px";
+			}
+			else {
+				var bottom = window.innerHeight - vm.box.top;
+				top = Math.max(top, menuHeight);
+				vm.style.bottom = bottom + "px";
+			}
+
+			//console.log("dropdownMenu", vm.variable ||"", "positionMenu", vm.style);
+			return vm.style;
+		};
+
+		vm.scrollHandler = function() {
+			vm.positionMenu();
+			$scope.$apply();
+		};
+
+		vm.closeHandler = function() {
+			vm.close();
+			$scope.$apply();
+		};
+
+		vm.clickOutsideHandler = function(event)
+		{
+			if (vm != vm.openInstance || !event || !event.target) return;
+
+			var isParent = vm.isChildOf(event.target, vm.classList);
+			//console.log("dropdownMenu", vm.variable || "", "clickOutside", event.target.id || event.target.tagName || "", "isParent:", isParent);
+			if(!isParent)
+				vm.closeHandler();
+		};
+
+		//does the target element or its parents have 1 of the specified classes?
+		vm.isChildOf = function(target, classList)
+		{
+			if(!target) return false;
+
+			for (var element = target; element; element = element.parentNode)
+			{
+				var classNames = element.className || "";
+				if(angular.isDefined(classNames.baseVal))
+					classNames = classNames.baseVal;
+
+				for (var i = 0; i &lt; classList.length; i++)
+					if(classNames.includes(classList[i]))
+						return true;
+			}
+
+			return false;
+		};
+
+		vm.onclick = function(action)
+		{
+			vm.selectedItem = action;
+			if(action.click)
+				action.click(vm.model, action);
+			else if(vm.click)
+				vm.click(vm.model, action.text || action);
+
+			vm.close(); //close menu after action is selected
+		};
+
+		vm.showAction = function(action) {
+			return CommonUtils.isMissing(action.show) || CommonUtils.getPropertyValue(action, "show", vm.model) || false;
+		};
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

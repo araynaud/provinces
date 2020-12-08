@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: userPreference/app/states/main/main.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: userPreference/app/states/main/main.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module userPreference/main
+@description This is the main page controller for UserPreferences page.
+*/
+
+module.exports = function(ngModule)
+{
+	ngModule.controller("UserPreferencesNgController", UserPreferencesNgController);
+	UserPreferencesNgController.$inject = ['$scope', '$window', '$q', 'RemoteActionService', 'ToastService'];
+	function UserPreferencesNgController  ( $scope,   $window,   $q,   RemoteActionService,   ToastService )
+	{
+		var vm = this;
+		$window.userPreferencesNgController = this;
+		var userPreferencesControllerMapper = $window.userPreferencesControllerMapper.remoteActions;
+		vm.stencils = true;
+
+		var listSize     = 100;
+		var maxListLimit = 15000;
+
+		vm.init = function()
+		{
+			vm.status = "init";
+			vm.configSettings = $window.configSettings;
+			vm.selectedTradingPartnerId = vm.configSettings.selectedTradingPartnerId;
+			vm.namespace  = vm.configSettings ? vm.configSettings.namespace : "";
+			vm.selectedTab = vm.configSettings.selectedTab;
+			vm.resultsPerPage = 50;
+			vm.prodTest = null;
+			vm.notificationTypes = null;
+			vm.receiving = "";
+			vm.error = '';
+			vm.availableProductGroupList	= [];
+			vm.selectedProductGroupList		= [];
+			vm.loadBaseData();
+			window.addEventListener("message", vm.receiveMessage, false);
+
+			vm.preferenceDialog = {
+				close:   vm.closePreferenceDialog,
+				actions: [{ text: "Save", click: vm.savePreferenceDialog, showLoader: false }]
+			};
+
+			vm.tabsName = [];
+			vm.userRules = [];
+			vm.publicGroups = [];
+			vm.containerTemplates = [];
+			vm.publicGroupsContainers = [];
+			vm.readOnlyAllGroup = false;
+			vm.readOnlyAllContainers = false;
+			vm.groupPairs = false;
+			vm.pairsRepeted = [];
+			vm.checkPairsSelected = true;
+			vm.showDelete = 0;
+			vm.toastVisible = false;
+
+			vm.tasksColumns = [
+				{ field: "name", label: "Notification Type", type: "", sortable: false, filterType: "string", classes: "slds-row-select", style: {color: '#0070d2'} },
+				{ field: "programName", label: "Program", align: "left", sortable: false, filterType: "string"},
+				{ field: "groupsText", label: "Notification Filter", align: "left", sortable: false, filterType: "string",
+					popover: vm.getPopoverInfo,
+					style: function(up) { if(up &amp;&amp; Array.isNotEmpty(up.groups)) return {color: '#0070d2', 'text-align': 'center'}; },
+					isHtml: true
+				},
+				{ field: "isActive", type: "checkbox", label: "Receiving", align: "center", sortable: false, filterType: "string", change: vm.changeNotificationPreferenceRule },
+				{ field: "batchSchedule", label: "Batch Schedule", align: "left", sortable: false, filterType: "string"}
+			];
+
+			vm.productTestColumns = [
+				{ field: "name", label: "Notification Type", type: "", sortable: false, filterType: "string", classes: "slds-row-select", style: {color: '#0070d2'} },
+				{ field: "programName", label: "Program", align: "left", sortable: false, filterType: "string"},
+				{ field: "groupsText", label: "Notification Filter", align: "left", sortable: false, filterType: "string",
+					popover: vm.getPopoverInfo,
+					style: function(up) { if(up &amp;&amp; Array.isNotEmpty(up.groups)) return {color: '#0070d2', 'text-align': 'center'}; },
+					isHtml: true
+				},
+				{ field: "isActive", type: "checkbox", label: "Receiving", align: "center", sortable: false, filterType: "string", change: vm.changeNotificationPreferenceRule },
+				{ field: "batchSchedule", label: "Batch Schedule", align: "left", sortable: false, filterType: "string"}
+			];
+
+			vm.workflowStatusColumns = [
+				{ field: "name", label: "Workflow Status", type: "", sortable: false, filterType: "string", classes: "slds-row-select", style: { color: '#0070d2' } },
+				{ field: "actorType", label: "Actor Type", align: "left", sortable: false, filterType: "string"},
+				{ field: "isActive", type: "checkbox", label: "Receiving", align: "center", sortable: false, filterType: "string", change: vm.changeNotificationPreferenceRule }
+			];
+
+			vm.taskFilteringColumns = [
+				{ field: "preferenceNumber", label: "Preference #", type: "",      sortable: true,  filterType: "string", classes: "slds-row-select" },
+				{ field: "groupName",        label: "Public Group", align: "left", sortable: false, filterType: "string" },
+				{ field: "templateName",     label: "Forms",        align: "left", sortable: false, filterType: "string" }
+			];
+
+			vm.actions = [
+				{ text: "Filter Notification", click: vm.openFilterNotificationsDialog }
+			];
+		};
+
+		vm.receiveMessage = function(event) {
+			vm.orgDomain = event.origin;
+			vm.message = event.data;
+		};
+
+		/////////////// call remote action on controller
+		vm.callRemoteAction = function(method, args, outputElement) {
+			return RemoteActionService.callRemoteAction(method, args, outputElement, vm);
+		};
+
+		vm.getPopoverInfo = function(up)
+		{
+			if(!up || Array.isEmpty(up.groups)) return;
+
+			var body = '&lt;div class="popover_title">&lt;p>&lt;strong>Product Groups&lt;p>&lt;/strong>&lt;/div>';
+			body += '&lt;p style="color:#005fb2;">';
+			body += up.groups.map(group => group.name).join(", ");
+			body += '&lt;/p>';
+			return body;
+		};
+
+		// remote action methods
+		vm.loadBaseData = function() {
+			var promises = [];
+			promises[0] = vm.getTradingPartners();
+			promises[1] = vm.getEmailNotifications();
+			//AP-274
+			promises[2] = vm.getPublicGroups();
+			promises[3] = vm.getContainerTemplates();
+
+			//hide stencils when all 4 remote action calls are complete
+			$q.all(promises).then(function() { vm.stencils = false; });
+		};
+
+		vm.getTradingPartners = function() {
+			return vm.callRemoteAction( userPreferencesControllerMapper.getTradingPartners, [], "TradingPartners");
+		};
+
+		//AP-274
+		vm.getPublicGroups = function() {
+			return vm.callRemoteAction( userPreferencesControllerMapper.getPublicGroups, [], function(result){
+				if(Array.isNotEmpty(result))
+					vm.allGroups = {id: 'ALLGROUPS', name: 'ALL GROUPS', isActive: false};
+
+				angular.forEach(result, function(value) {
+					if(value.name)
+						vm.publicGroups.push({ id: value.id, name: value.name, isActive: false });
+				});
+			});
+		};
+
+		vm.getContainerTemplates = function() {
+			return vm.callRemoteAction( userPreferencesControllerMapper.getContainerTemplates, [], function(result){
+				if(Array.isNotEmpty(result))
+					vm.allContainers = {id: 'ALLFORMS', name: 'ALL FORMS', isActive: false};
+
+				angular.forEach(result, function(value) {
+					vm.containerTemplates.push({ id: value.id, name: value.name, isActive: false });
+				});
+			});
+		};
+
+		vm.getEmailNotifications = function() {
+			return vm.callRemoteAction( userPreferencesControllerMapper.getEmailNotifications, [], function(result)
+			{
+				vm.EmailNotifications = result;
+
+				angular.forEach(vm.EmailNotifications, function(value) {
+					if(!vm.tabsName.includes(value.type))
+						vm.tabsName.push({ title: value.type });
+				});
+
+				vm.tabSelected = vm.EmailNotifications[0].type;
+				vm.tabIndex = 0;
+			});
+		};
+
+		vm.checkPreferenceType = function(){
+			angular.forEach(vm.EmailNotifications, function(value){
+				if(vm.tabSelected == value.type)
+					vm.userRules = value.rules;
+			});
+		};
+
+		$scope.$watch('vm.tabSelected', function(newValue, oldValue)
+		{
+			if(vm.EmailNotifications){
+				if(newValue !== oldValue) {
+					vm.checkPreferenceType();
+					if(vm.tabSelected == 'Tasks'){
+						vm.allColumns = vm.tasksColumns;
+						vm.showDelete = 0;
+						vm.actions = [ { text: "Filter Notification", click: vm.openFilterNotificationsDialog } ];
+					}else if(vm.tabSelected == 'Product Test') {
+						vm.allColumns = vm.productTestColumns;
+						vm.showDelete = 0;
+						vm.actions = [ { text: "Filter Notification", click: vm.openFilterNotificationsDialog } ];
+						if(vm.filteredList){
+							vm.userRules = vm.filteredList;
+						}
+					}else if(vm.tabSelected == 'Workflow Status'){
+						vm.allColumns = vm.workflowStatusColumns;
+						vm.actions = [];
+						vm.showDelete = 0;
+					} else {
+						vm.allColumns = vm.taskFilteringColumns;
+						vm.actions = [];
+						vm.showDelete = 1;
+					}
+				}
+			}
+		});
+
+		//AP-274
+		vm.openPreferenceDialog = function()
+		{
+			if(Array.isEmpty(vm.publicGroups) || Array.isEmpty(vm.containerTemplates))
+				vm.toastVisible = true;
+			else
+				vm.preferenceDialog.visible = true;
+		};
+
+		vm.closePreferenceDialog = function()
+		{
+			angular.forEach(vm.publicGroups,       value => value.isActive = false);
+			angular.forEach(vm.containerTemplates, value => value.isActive = false);
+
+			vm.allGroups.isActive = false;
+			vm.allContainers.isActive = false;
+			vm.groupPairs = false;
+			vm.pairsRepeted = [];
+			vm.checkPairsSelected = true;
+		};
+
+		vm.savePreferenceDialog = function()
+		{
+			vm.preferenceDialog.actions[0].showLoader = true;
+			vm.checkPairsSelected = true;
+			vm.groupPairs = false;
+			vm.pairsRepeted = [];
+			var taskFilteringSize = vm.getUserFilteringSize();
+			vm.checkPairsSelected = vm.groupPairsSelected();
+			vm.preferenceDialog.visible = true;
+
+			if(!vm.checkPairsSelected){
+				vm.preferenceDialog.actions[0].showLoader = false;
+				return;
+			}
+
+			return vm.callRemoteAction( userPreferencesControllerMapper.checkIsPairAlreadyExist, [vm.publicGroups, vm.containerTemplates, vm.allGroups, vm.allContainers],
+				function(pairsResult)
+				{
+					if(Array.isNotEmpty(pairsResult)) {
+						vm.pairsRepeted = pairsResult;
+						vm.groupPairs = true;
+						vm.preferenceDialog.actions[0].showLoader = false;
+						return;
+					}
+
+					vm.callRemoteAction( userPreferencesControllerMapper.saveTaskFiltering, [vm.publicGroups, vm.containerTemplates, taskFilteringSize, vm.allGroups, vm.allContainers],
+						function(result)
+						{
+							angular.forEach(vm.EmailNotifications, function(value)
+							{
+								if(value.type != 'Task Filtering') return;
+
+								var rulesAux = [];
+								angular.forEach(vm.EmailNotifications, function(value)
+								{
+									if(value.type != 'Task Filtering') return;
+
+									if(Array.isNotEmpty(value.rules))
+									{
+										angular.copy(value.rules, rulesAux);
+										angular.forEach(result, taskFiltering => rulesAux.push(taskFiltering) );
+										value.rules = rulesAux;
+									}
+									else{
+										value.rules = result;
+									}
+
+									vm.userRules = value.rules;
+								});
+							});
+
+							//remove active from checkbox
+							angular.forEach(vm.publicGroups,       value => value.isActive = false);
+							angular.forEach(vm.containerTemplates, value => value.isActive = false);
+
+							vm.allGroups.isActive = false;
+							vm.allContainers.isActive = false;
+							vm.readOnlyAllGroup = false;
+							vm.readOnlyAllContainers = false;
+						}
+					);
+
+					vm.preferenceDialog.visible = false;
+					vm.preferenceDialog.actions[0].showLoader = false;
+				});
+		};
+
+		vm.groupPairsSelected = function()
+		{
+			var groupSelected = vm.publicGroups.some(value => value.isActive);
+			var formSelected  = vm.containerTemplates.some(value => value.isActive);
+			return (formSelected || vm.allContainers.isActive) &amp;&amp; (groupSelected || vm.allGroups.isActive);
+		};
+
+		vm.deleteTaskFiltering = function(tf)
+		{
+			return vm.callRemoteAction(userPreferencesControllerMapper.removeTaskFiltering, [tf.id], function(result)
+			{
+				if(result === 'Success'){
+					angular.forEach(vm.EmailNotifications, function(value) {
+						if(value.type === 'Task Filtering')
+							angular.forEach(value.rules, function(taskFiltering, indexTask){
+								taskFiltering.preferenceNumber = indexTask + 1;
+							});
+					});
+				}
+			});
+		};
+
+		vm.selectAllGroups = function() {
+			angular.forEach(vm.publicGroups, group => group.isActive = vm.allGroups.isActive);
+		};
+
+		vm.selectAllContainers = function() {
+			angular.forEach(vm.containerTemplates, template => template.isActive = vm.allContainers.isActive);
+		};
+
+		vm.selectGroupCheck = function() {
+			vm.allGroups.isActive = false;
+		};
+
+		vm.selectFormCheck = function() {
+			vm.allContainers.isActive = false;
+		};
+
+		vm.getUserFilteringSize = function(){
+			var totalSize = 0;
+			angular.forEach(vm.EmailNotifications, function(value) {
+				if(value.type === 'Task Filtering')
+					totalSize = value.rules.length;
+			});
+			return totalSize;
+		};
+
+		//display toast based on Remote Action result.
+		vm.notifyResult =  function(result) {
+			if(String.isEmpty(result)) return;
+			var status = String.includes(result, "success") ? "success" : String.includes(result, "error") ? "error" : "";
+			ToastService.toast(result, status);
+		};
+
+		vm.changeNotificationPreferenceRule = function( selectedRule ) {
+			vm.callRemoteAction( userPreferencesControllerMapper.changeNotificationPreferenceRule, [selectedRule], vm.notifyResult);
+		};
+
+		vm.changeCurrentUserUBEID = function( selectedPartnerId ) {
+			vm.callRemoteAction( userPreferencesControllerMapper.changeCurrentUserUBEID, [selectedPartnerId], vm.notifyResult);
+			vm.selectedTradingPartnerId = selectedPartnerId;
+		};
+
+		//Filter Notifications dialog
+		vm.openFilterNotificationsDialog  = function(p)
+		{
+			vm.error = '';
+			vm.filterNotificationsDialog.visible = true;
+			vm.selectedNotification = p;
+			vm.availableProductGroupList	= [];
+			vm.loadAvailableProductGroupList(vm.selectedNotification.id, '', listSize, 0);
+			vm.selectedProductGroupList	= [];
+			vm.callRemoteAction(userPreferencesControllerMapper.getProductGroupsSelected, [ vm.selectedNotification.id, '', 1000, 0 ], "selectedProductGroupList");
+		};
+
+		vm.editProductTestNotifications = function()
+		{
+			vm.error = '';
+			vm.savingNotification = true;
+
+			vm.callRemoteAction(userPreferencesControllerMapper.setSelectedProductGroups, [vm.selectedNotification.id, vm.selectedProductGroupList],
+				function(result)
+				{
+					vm.savingNotification = false;
+					if(result == 'Success')
+					{
+						vm.filterNotificationsDialog.visible = false;
+						vm.selectedNotification.groups = vm.selectedProductGroupList;
+						vm.selectedNotification.groupsText = '';
+						if(Array.isNotEmpty(vm.selectedNotification.groups))
+							vm.selectedNotification.groupsText = String.plural(vm.selectedNotification.groups.length, ' product group');
+						vm.selectedProductGroupList	= [];
+					}
+					else
+						vm.error = result;
+				}
+			);
+		};
+
+		vm.loadAvailableProductGroupList = function(selectedNotificationId, searchWord, limit, offset)
+		{
+			if(maxListLimit &amp;&amp; vm.availableProductGroupList.length >= maxListLimit) return;
+			vm.loading = true;
+			vm.callRemoteAction(userPreferencesControllerMapper.getProductGroupsAvalable, [selectedNotificationId, searchWord, limit, offset], function(result)
+			{
+				angular.forEach(result, function(el)
+				{
+					if(maxListLimit &amp;&amp; vm.availableProductGroupList.length >= maxListLimit) return;
+					vm.availableProductGroupList.push(el);
+				});
+			});
+		};
+
+		vm.closeNotification = function()
+		{
+			vm.availableProductGroupList	= [];
+			vm.selectedProductGroupList	= [];
+			vm.error = '';
+		};
+
+		vm.filterNotificationsDialog =
+		{
+			//fields: "name",
+			open:   vm.openFilterNotificationsDialog,
+			actions: [
+				{ text: "Cancel", close: true,  disable: () => vm.savingNotification },
+				{ text: "Save",   close: false, click: vm.editProductTestNotifications,  showLoader: () => vm.savingNotification }
+			]
+		};
+
+		vm.selectProductTest = function(param){
+			vm.testingProgram = '';
+			vm.prodTest = param;
+		};
+
+		vm.selectNotificationTypes = function(param){
+			vm.notificationType = '';
+			vm.notificationTypes = param;
+		};
+
+		vm.applyFilter = function()
+		{
+			vm.updateModelSingleChangeTable();
+			vm.clearListTestProgram();
+			var programName = vm.prodTest ? vm.prodTest.name : '';
+			var name = vm.notificationTypes ? vm.notificationTypes.name : '';
+			var isActive = vm.receiving ? vm.receiving === 'True' : '';
+
+			vm.filteredList = vm.userRules.filter( row => String.includes(row.programName, programName) &amp;&amp; String.includes(row.name, name) &amp;&amp; (row.isActive === isActive || isActive === '') );
+			vm.userRules = vm.filteredList;
+		};
+
+		vm.updateModelSingleChangeTable = function()
+		{
+			angular.forEach(vm.userRules, function(value)
+			{
+				//update original model from the tables model.
+				angular.forEach(vm.EmailNotifications, function(originalValue)
+				{
+					if(originalValue.type == 'Product Test')
+						angular.forEach(originalValue.rules, function(value2){
+							if(value.id == value2.id)
+								value2.isActive = value.isActive;
+						});
+				});
+			});
+		};
+
+		vm.checkAll = function(selectedRules, check)
+		{
+			ToastService.toast("Proccessing action", "success", 6000);
+			vm.callRemoteAction( userPreferencesControllerMapper.changeNotificationPreferenceRules, [selectedRules, check], function(result)
+			{
+				vm.notifyResult(result);
+				if(String.includes(result, "success"))
+					vm.checkProductTestModel(check);
+			});
+		};
+
+		vm.checkProductTestModel = function(checked)
+		{
+			angular.forEach(vm.userRules, function(value)
+			{
+				value.isActive = checked;
+				//update original model.
+				angular.forEach(vm.EmailNotifications, function(originalValue) {
+					if(originalValue.type == 'Product Test') {
+						angular.forEach(originalValue.rules, function(value2) {
+							if(value2.id == value.id)
+								value2.isActive = checked;
+						});
+					}
+				});
+			});
+		};
+
+		vm.disableApplyFilter = function(){
+			return String.isEmpty(vm.notificationTypes) &amp;&amp; String.isEmpty(vm.prodTest) &amp;&amp; String.isEmpty(vm.receiving);
+		};
+
+		vm.clearListTestProgram = function()
+		{
+			angular.forEach(vm.EmailNotifications, function(value) {
+				if(value.type == 'Product Test')
+					vm.userRules = angular.copy(value.rules);
+			});
+		};
+
+		vm.init();
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

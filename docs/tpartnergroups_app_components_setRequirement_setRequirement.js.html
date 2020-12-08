@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: tpartnergroups/app/components/setRequirement/setRequirement.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: tpartnergroups/app/components/setRequirement/setRequirement.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module tpartnergroups/components/setRequirement
+@description This is the setRequirement controller for Partner and group Requirement pages.
+@param remoteActions    {optional|string} @ Name of remote action mapper variable: partnerGroupRequirementsControllerMapper | productGroupRequirementsControllerMapper
+*/
+
+'use strict';
+module.exports = function (ngModule)
+{
+	ngModule.component('setRequirement', {
+		template: require('./setRequirement.html'),
+		bindings: { remoteActions: "@" },
+		controllerAs: 'vm',
+		controller: SetRequirementController
+	});
+
+	SetRequirementController.$inject = ['$window', '$timeout', '$element', 'RemoteActionService', 'CommonUtils', 'NavigationService'];
+	function SetRequirementController  ( $window,   $timeout,   $element,   RemoteActionService,   CommonUtils,   NavigationService )
+	{
+		var vm = this;
+		$window.setRequirement = vm;
+		$window.groupId = vm.groupId = NavigationService.getParameter("id");
+		vm.groupName = $window.configSettings.groupName;
+		vm.className = $window.configSettings.controller;
+		vm.namespace = $window.configSettings.namespace;
+		vm.remoteActionMethods = $window[vm.remoteActions].remoteActions;
+
+		vm.$onInit = function()
+		{
+			vm.relType = '';
+			if(vm.className === vm.namespace + '.SendProductGroupRequirementsExt'){
+				vm.pageTitle = 'PRODUCT GROUPS';
+				vm.relType = 'Product_Group_Requirement__c';
+			}
+			if(vm.className === vm.namespace + '.PartnerGroupRequirementsController'){
+				vm.pageTitle = 'TRADING PARTNER GROUPS';
+				vm.relType = 'Partner_Group_Requirement__c';
+			}
+			vm.toast = {
+				visible: false,
+				status: 'success',
+				message: 'Requirements updated successfully.'
+			};
+
+			vm.stencilsCompliance = true;
+			vm.requirementTypes = [];
+			vm.requiredFields = ['RequestType', 'DocumentType', 'DueTimeFrame', 'Requirement'];
+			vm.saveAndSend = false;
+			vm.allDocTypes = [];
+			vm.dueDateTimeFrames = [7, 14, 30, 60, 90];
+			vm.removedItemsIds = [];
+			vm.sendDate = '';
+			vm.savedDate = '';
+			vm.requestTypes = [];
+			vm.createPermission = false;
+			vm.editPermission = false;
+			vm.readPermission = false;
+			vm.deletePermission = false;
+			vm.selectedValCheckbox = false;
+			vm.requestTypes = [];
+			vm.disableSendButton = false;
+			vm.disableSaveButton = false;
+			vm.model = [{RequestType: 'All', DocumentType: null, DueTimeFrame: null, Requirement: null}];
+			vm.duplicateForms = false;
+			vm.sendLoader = false;
+			vm.saveLoader = false;
+			vm.table = {};
+
+			// init data
+			vm.populateRequestType();
+			vm.populateRequirementType();
+			vm.populateRequirementDates();
+			vm.getPermissionsforCurrentUser();
+			vm.loadAllDocTypes();
+
+			//apply current timeframe to all other editable rows
+			vm.applyTimeframe = function(param){
+				console.log("setRequirement.applyTimeframe:", param, vm.model.length);
+
+				for(var i = 0; i &lt; Array.getCount(vm.model); i++){
+					if(param &amp;&amp; !vm.model[i].IsRequirementSent)
+						vm.model[i].DueTimeFrame = param;
+				}
+			};
+
+			vm.table.columns = [
+				{
+					field: "RequestType", label: "Request Type", type: "picklist", defaultValue: 'All',
+					options: vm.requestTypes, change: vm.loadCurrentDocTypes, required: true, disabled: vm.alreadySentRequirement
+				},
+				{
+					field: "DocumentType", label: "Form Name", type: "picklist", options: vm.allDocTypes, required: true, disabled: vm.alreadySentRequirement
+				},
+				{
+					field: "DueTimeFrame", label: "Due Date", type: "timeframe",
+					placeholder: "Pick a timeframe", applyToAll: vm.applyTimeframe,
+					timeframeValues: vm.dueDateTimeFrames, required: true, disabled: vm.alreadySentRequirement
+				},
+				{
+					field: "Requirement", label: "Requirement", type: "picklist",
+					options: vm.requirementTypes, required: true, disabled: vm.alreadySentRequirement
+				}
+			];
+		}; //end $onInit
+
+		vm.populateRequestType = function() {
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getRequestTypes, [vm.relType], function(result, event) {
+				result.forEach(function (option){
+					vm.requestTypes.push(option.value);
+				});
+				vm.stencilsCompliance = false;
+			}, vm);
+		};
+
+		vm.populateRequirementType = function() {
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getRequirementTypes, [vm.relType], function(result, event) {
+				result.forEach( function(option) {
+					vm.requirementTypes.push(option.value);
+				}, vm);
+			}, vm);
+		};
+
+		vm.getPermissionsforCurrentUser = function()
+		{
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getPermissionSetForRequirements, [vm.relType], function(result, event)
+			{
+				vm.createPermission = result.PermissionsCreate;
+				vm.editPermission = result.PermissionsEdit;
+				vm.readPermission = result.PermissionsRead;
+				vm.deletePermission = result.PermissionsDelete;
+				if(!vm.readPermission){
+					vm.toast.status = 'warning';
+					vm.toast.message = "You don't have read access";
+					vm.toast.visible = true;
+				}
+			}, vm);
+		};
+
+		vm.populateRequirementDates = function()
+		{
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getRequirementDates, [vm.groupId, vm.relType], function(result, event) {
+				vm.sendDate = result.SentDate;
+				vm.savedDate = result.SavedDate;
+			}, vm);
+		};
+
+		vm.getExistingRequirements = function(){
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getRequirementsListGroup, [vm.groupId, vm.relType], function(result, event) {
+				if(Array.isNotEmpty(result)){
+					// load saved requirements on the table
+					vm.model = result;
+					vm.disableSendButton = vm.disableSaveButton = result.every(function(requirement){
+						return requirement.IsRequirementSent;
+					});
+				}
+			}, vm);
+		};
+
+		vm.loadAllDocTypes = function(){
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getDocumentTypeList, ['All', vm.relType], function(result, event) {
+				vm.getExistingRequirements();
+				result.forEach( function(option) {
+					vm.allDocTypes.push({id: option.Id, name: option.Name});
+				});
+			}, vm);
+		};
+
+		vm.loadCurrentDocTypes = function(row){
+			var currentDocTypes = [];
+			RemoteActionService.callRemoteAction(vm.remoteActionMethods.getDocumentTypeList, [row.RequestType, vm.relType], function(result, event) {
+				result.forEach( function(option) {
+					currentDocTypes.push({id: option.Id, name: option.Name});
+				});
+				row.$options = { DocumentType: currentDocTypes };
+			}, vm);
+		};
+
+		vm.saveRequirements = function(saveAndSend)
+		{
+			vm.disableSendButton = true;
+			vm.disableSaveButton = true;
+			if(vm.validateData()){
+				if(saveAndSend){
+					vm.saveAndSend = saveAndSend;
+					vm.sendLoader = true;
+				}else{
+					vm.saveLoader = true;
+				}
+				var requirementsList = [];
+				vm.model.forEach(function(mod){
+					if(!mod.$emptyRow){
+						if(!mod.Id) mod.Id = null;
+						if(vm.className === vm.namespace + '.PartnerGroupRequirementsController') mod.GroupRelationship = vm.groupId;
+						if(vm.className === vm.namespace + '.SendProductGroupRequirementsExt') mod.GroupRelationship = vm.groupId;
+						mod.RequirementName = Array.find(vm.allDocTypes, t => t.id == mod.DocumentType).name; // this is actually the doc name
+						if(mod.IsRequirementSent == undefined || mod.IsRequirementSent == null) mod.IsRequirementSent = false;
+						requirementsList.push(mod);
+					}
+				});
+				RemoteActionService.callRemoteAction(vm.remoteActionMethods.createRequirements, [requirementsList, vm.removedItemsIds, vm.relType], function(result)
+				{
+					if(!vm.saveAndSend){
+						vm.toast.message = "Requirements updated successfully.";
+						vm.toast.status = 'success';
+						vm.toast.visible = true;
+						vm.saveLoader = false;
+						if(result === 'error'){
+							vm.toast.status = 'error';
+							vm.toast.message = 'Requirements could not be updated.';
+							vm.disableSendButton = false;
+							vm.disableSaveButton = false;
+						}
+					}else{
+						vm.sendRequirements(vm.groupId);
+					}
+				});
+			}
+			else{
+				if(vm.duplicateForms){
+					// show duplcate toast, has prevalecenve over input validation
+					vm.duplicateForms = false;
+					vm.toast.status = 'error';
+					vm.toast.message = 'There are at least more than one criteria related to the same form name.';
+					vm.toast.visible = true;
+				}else{
+					// show invalid data toast
+					vm.toast.status = 'error';
+					vm.toast.message = 'Please fill in all required fields.';
+					vm.toast.visible = true;
+				}
+				vm.disableSendButton = false;
+				vm.disableSaveButton = false;
+			}
+		};
+
+		vm.sendRequirements = function(groupId){
+			var remoteMethod = vm.remoteActionMethods.sendPartnersRequest;
+			if(vm.relType === 'Product_Group_Requirement__c') remoteMethod = vm.remoteActionMethods.sendProductsRequest;
+			RemoteActionService.callRemoteAction(remoteMethod, groupId, function(result, event){
+				vm.toast.message = 'Requirements sent successfully.';
+				vm.toast.status = 'success';
+				vm.toast.visible = true;
+				vm.sendLoader = false;
+				if(result === 'error'){
+					vm.toast.status = 'error';
+					vm.toast.message = 'Requirements could not be sent.';
+					vm.disableSendButton = false;
+					vm.disableSaveButton = false;
+				}
+			});
+		};
+
+		vm.alreadySentRequirement = function(row){
+			return row &amp;&amp; row.IsRequirementSent;
+		};
+
+		vm.removeRequirement = function(row){
+			vm.disableSaveButton = false;
+			if(row &amp;&amp; row.Id) vm.removedItemsIds.push(row.Id);
+		};
+
+		vm.enableButtons = function(){
+			vm.disableSendButton = false;
+			vm.disableSaveButton = false;
+		};
+
+		// Redirect to Record/Details page after cancel
+		vm.redirectToRecord = function(){
+			NavigationService.goToObject(vm.groupId);
+		};
+
+		// Redirect to Record/Details page for Save and Send.
+		vm.redirectToDetails = function(){
+			if(vm.toast.status == 'success')
+				NavigationService.goToObject(vm.groupId);
+		};
+
+		vm.validateData = function()
+		{
+			// store selected form to validate there are not repeated values
+			var selectedDocuments = [];
+			var isValid = true;
+			vm.model.forEach( function(element, index) {
+				var requiredFieldsSelected = [];
+				Object.forEach(element, function(val, key) {
+					if(key == 'DocumentType'){
+						if(Array.contains(selectedDocuments, val)){
+							isValid = false;
+							vm.duplicateForms = true;
+						}else{
+							selectedDocuments.push(val);
+						}
+					}
+					if(Array.contains(vm.requiredFields, key) &amp;&amp; val){
+						requiredFieldsSelected.push(key);
+					}
+				});
+				if(isValid){
+					isValid = requiredFieldsSelected.length == 0 || requiredFieldsSelected.length == vm.requiredFields.length;
+					if(isValid &amp;&amp; requiredFieldsSelected.length == 0){
+						element['$emptyRow'] = true;
+					}
+				}
+			});
+			return isValid;
+		};
+
+		vm.showLoader = function(showLoader)
+		{
+			return showLoader;
+		};
+
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

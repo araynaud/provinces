@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/multiSelect/multiSelect.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/multiSelect/multiSelect.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/multiSelect
+
+@description Dueling picklists are used to move options between two lists. Options in each list can be reordered.
+&lt;center>
+	&lt;img src="https://user-images.githubusercontent.com/21251436/37166993-7eb8c104-22b5-11e8-8f6d-582b6ad0034d.png"/>
+&lt;/center>
+
+@see {@link https://www.lightningdesignsystem.com/components/dueling-picklist|Dueling Picklist - Lightning Design System}
+
+@param main                  {object[]}                =
+@param editobjectId          {object[]}                =
+@param availableList         {object[]|string[]}       =?
+@param selectedList          {object[]|string[]}       =?
+@param loadQuantity          {object[]}                =
+
+@param remoteActionLoadAvailable    {optional|string}         @
+@param remoteActionLoadSelected     {optional|string}         @
+
+@param itemFormat           {optional|string}         @
+@param remoteSearchleft     {object[]}                =
+@param remoteSearchright    {object[]}                =
+@param multiple             {object[]}                =
+@param leftTitle            {object[]}                @
+@param rightTitle           {optional|string}         @
+
+@example
+
+&lt;multi-select
+			main                = "vm"
+			editobject-id       = "vm.uprelationshipId"
+			load-quantity       = "vm.listSize"
+			available-list      = "vm.available"
+			selected-list       = "vm.main.productRelationsipPermissionsSelectedList"
+			item-format         = "name"
+			remote-searchleft   = "true"
+			remote-searchright  = "false"
+			remote-action-load-available    =   "getUPRelationshipPermissionsAvalable"
+			remote-action-load-selected     =   "getUPRelationshipPermissionsSelected"
+			multiple            = "true"
+			left-title          = "Not viewable"
+			right-title         = "Viewable">
+&lt;/multi-select>
+*/
+module.exports = function (ngModule)
+{
+	ngModule.component('multiSelect', {
+		bindings: {
+			main: '=',
+			editobjectId: '=',
+			availableList: '=?',
+			selectedList: '=?',
+			loadQuantity: '=',
+			remoteActionLoadAvailable: '@',
+			remoteActionLoadSelected: '@',
+			itemFormat: '@',
+			remoteSearchleft: '=',
+			remoteSearchright: '=',
+			multiple: '=',
+			leftTitle: '@',
+			rightTitle: '@'
+		},
+		template: require('./multiSelect.html'),
+		controllerAs: 'vm',
+		controller: ComponentController
+	});
+
+	ComponentController.$inject = ['RemoteActionService'];
+	function ComponentController  ( RemoteActionService )
+	{
+		var vm = this;
+		window.multiSelect = this;
+		var loadQuantity;
+		var editObjectId;
+		var remoteActionLoadAvailableMethod;
+		var remoteActionLoadSelectedMethod;
+		var maxListLimit = 15000;
+		vm.labels = window.labels || { common: { search: "Search" } };
+
+		vm.$onInit = function()
+		{
+			if(!vm.availableList)  vm.availableList = [];
+			if(!vm.selectedList)   vm.selectedList  = [];
+			vm.imageDir = window.sf_design_system.imageDir;
+
+			loadQuantity = angular.isDefined(vm.loadQuantity) ? vm.loadQuantity : 100;
+			editObjectId = angular.isDefined(vm.editobjectId) ? vm.editobjectId : null;
+
+			remoteActionLoadAvailableMethod = vm.remoteActionLoadAvailable;
+			remoteActionLoadSelectedMethod = vm.remoteActionLoadSelected;
+
+			vm.counter = 1;
+			vm.moveItems(vm.availableList, vm.selectedList);
+			console.log("selectedList:", vm.selectedList);
+			vm.leftFilter = vm.rightFilter = "";
+
+			//vm.searchLeft();
+		};
+
+		//search first page of results
+		vm.searchAvailableList = function(uprelationshipId, searchWord)
+		{
+			console.log("multiSelect.searchAvailableList");
+			vm.availableList = [];
+
+			vm.loadAvailableList(uprelationshipId, searchWord, loadQuantity, 0);
+		};
+
+		vm.loadAvailableList = function(uprelationshipId, searchWord, limit, offset)
+		{
+			if(maxListLimit &amp;&amp; vm.availableList.length >= maxListLimit) return;
+
+			if(String.isBlank(searchWord))
+				searchWord = '';
+
+			RemoteActionService.callRemoteAction(remoteActionLoadAvailableMethod,
+				[uprelationshipId, searchWord, limit, offset],
+				vm.getAvailableListResult, vm);
+		};
+
+		vm.getAvailableListResult = function(result)
+		{
+			if(Array.isEmpty(result)) return;
+
+			angular.forEach(result, function(el)
+			{
+				if(maxListLimit &amp;&amp; vm.availableList.length >= maxListLimit) return;
+
+				if(!vm.isInSelectedList(el) &amp;&amp; !vm.isInAvailableList(el))
+					vm.availableList.push(el);
+			});
+
+			console.log("multiSelect.getAvailableListResult:", vm.availableList);
+			return vm.availableList;
+		};
+
+		vm.isInList = function(el, list) {
+			return Array.isNotEmpty(list) &amp;&amp; list.some(item => item == el || item.id == el.id || item.id == el);
+		};
+
+		vm.isInSelectedList = function(el) {
+			return vm.isInList(el, vm.selectedList);
+		};
+
+		vm.isInAvailableList = function(el) {
+			return vm.isInList(el, vm.availableList);
+		};
+
+		vm.loadSelectedList = function(uprelationshipId, searchWord, limit, offset)
+		{
+			console.log("multiSelect.loadSelectedList");
+			if(maxListLimit &amp;&amp; vm.selectedList.length >= maxListLimit) return;
+			RemoteActionService.callRemoteAction(remoteActionLoadSelectedMethod,
+				[uprelationshipId, searchWord, limit, offset],
+				vm.getSelectedListResult, vm);
+		};
+
+		vm.searchSelectedList = function(uprelationshipId, searchWord)
+		{
+			console.log("multiSelect.searchSelectedList");
+			if(maxListLimit &amp;&amp; vm.selectedList.length >= maxListLimit) return;
+
+			if(searchWord &amp;&amp; searchWord.length >= 2)
+			{
+				RemoteActionService.callRemoteAction(remoteActionLoadSelectedMethod,
+					[uprelationshipId, searchWord, 2000, 0],
+					vm.searchSelectedListResult, vm);
+			}
+			else
+				vm.loadSelectedList(uprelationshipId, '', loadQuantity, 0);
+			vm.selectedList = [];
+		};
+
+		vm.searchSelectedListResult = function(result){
+			vm.selectedList = [];
+			vm.getSelectedListResult(result);
+		};
+
+		vm.getSelectedListResult = function(result){
+			angular.forEach(result, function(el) {
+				if(maxListLimit &amp;&amp; vm.selectedList.length >= maxListLimit) return;
+
+				vm.selectedList.push(el);
+			});
+
+			console.log('multiSelect.getSelectedListResult:', vm.availableList);
+			return vm.selectedList;
+		};
+
+		vm.loadMoreLeft = function()
+		{
+			if(vm.remoteSearchleft &amp;&amp; vm.main) {
+				var offset = vm.availableList.length;
+				vm.leftFilter = vm.leftFilter ? vm.leftFilter.trim() : "";
+				vm.loadAvailableList( editObjectId, vm.leftFilter, loadQuantity, offset);
+			}
+		};
+
+		vm.loadMoreRight = function()
+		{
+			if(vm.remoteSearchright &amp;&amp; vm.main) {
+				var offset = vm.selectedList.length;
+				vm.rightFilter = vm.rightFilter ? vm.rightFilter.trim() : "";
+				vm.loadSelectedList( editObjectId, vm.rightFilter, loadQuantity, offset);
+			}
+		};
+
+		vm.clearFilterLeft = function()
+		{
+			vm.leftFilter = '';
+			if(vm.remoteSearchleft &amp;&amp; vm.main) {
+				vm.availableList = [];
+				vm.loadAvailableList( editObjectId, vm.leftFilter, loadQuantity, 0);
+			}
+		};
+
+		vm.clearFilterRight = function()
+		{
+			vm.rightFilter = '';
+			if(vm.remoteSearchright &amp;&amp; vm.main) {
+				vm.selectedList  = [];
+				vm.loadSelectedList( editObjectId, vm.rightFilter, loadQuantity, 0);
+			}
+		};
+
+		vm.formatItem = function(item)
+		{
+			if(!vm.itemFormat)
+				return vm.firstField(item);
+
+			if(angular.isFunction(vm.itemFormat))
+				return vm.itemFormat(item);
+
+			if(angular.isFunction(vm[vm.itemFormat]))
+				vm.itemFormat = vm[vm.itemFormat];
+
+			return item[vm.itemFormat];
+		};
+
+		vm.firstField = function(item)
+		{
+			if(angular.isObject(item))
+				for(var key in item)
+					return item[key];
+			return item;
+		};
+
+		vm.allFields = function(item, separator)
+		{
+			if(!angular.isDefined(separator))
+				separator = " ";
+			if(angular.isObject(item))
+				return Object.values(item).join(separator);
+			return item;
+		};
+
+		vm.searchLeft = function()
+		{
+			if(vm.remoteSearchleft &amp;&amp; vm.main) {
+				vm.leftFilter = vm.leftFilter ? vm.leftFilter.trim() : "";
+				vm.searchAvailableList( editObjectId, vm.leftFilter);
+			}
+			else
+				vm.leftFilter = vm.leftFilter ? vm.leftFilter.trim().toLowerCase() : "";
+		};
+
+		vm.searchRight = function()
+		{
+			if(vm.remoteSearchright &amp;&amp; vm.main) {
+				vm.rightFilter = vm.rightFilter ? vm.rightFilter.trim() : "";
+				vm.searchSelectedList( editObjectId, vm.rightFilter);
+			}
+			else
+				vm.rightFilter = vm.rightFilter ? vm.rightFilter.trim().toLowerCase() : "";
+		};
+
+		vm.itemMatches = function(item, filter)
+		{
+			if(String.isBlank(filter)) return true;
+
+			filter = filter.trim();
+			var text = vm.formatItem(item);
+			return String.includes(text, filter);
+		};
+
+		vm.setActiveItem = function(list, index)
+		{
+			//deselect previous element
+			if(!vm.multiple &amp;&amp; angular.isDefined(list.$activeIndex))
+				list[list.$activeIndex].isSelected = false;
+			list.$activeIndex = index;
+			list[index].isSelected = !list[index].isSelected;
+		};
+
+		vm.moveLeft = function()
+		{
+			if(vm.cantMoveLeft()) return;
+			vm.moveItems(vm.selectedList, vm.availableList);
+			//Filter member on Status/type selection/deselection
+			if(vm.main &amp;&amp; vm.main.filterMemberWithMultiSelect)
+				vm.main.filterMemberWithMultiSelect();
+		};
+
+		vm.moveRight = function()
+		{
+			if(vm.cantMoveRight()) return;
+			vm.moveItems(vm.availableList, vm.selectedList);
+			//Filter member on Status/type selection/deselection
+			if(vm.main &amp;&amp; vm.main.filterMemberWithMultiSelect)
+				vm.main.filterMemberWithMultiSelect();
+		};
+
+		vm.moveItems = function(from, to)
+		{
+			for(var i = 0; i &lt; from.length; i++)
+				if(from[i].isSelected)
+					vm.moveItem(i--, from, to);
+
+			delete from.$activeIndex;
+		};
+
+		vm.moveItem = function(index, from, to)
+		{
+			if(!angular.isDefined(index)) return;
+			var item = from.splice(index, 1)[0];
+			if(!item) return;
+			item.isSelected = false;
+			to.push(item);
+		};
+
+		vm.moveItemRight = function(index)
+		{
+			vm.moveItem(index, vm.availableList, vm.selectedList);
+		};
+
+		vm.moveItemLeft = function(index)
+		{
+			vm.moveItem(index, vm.selectedList, vm.availableList);
+		};
+
+		vm.moveUp = function()
+		{
+			if(vm.cantMoveUp()) return;
+			var item = vm.selectedList.splice(vm.selectedList.$activeIndex, 1)[0];
+			if(!item) return;
+			vm.selectedList.splice(vm.selectedList.$activeIndex - 1, 0, item);
+			vm.selectedList.$activeIndex--;
+		};
+
+		vm.moveDown = function()
+		{
+			if(vm.cantMoveDown()) return;
+			var item = vm.selectedList.splice(vm.selectedList.$activeIndex, 1)[0];
+			if(!item) return;
+			vm.selectedList.splice(vm.selectedList.$activeIndex + 1, 0, item);
+			vm.selectedList.$activeIndex++;
+		};
+
+		vm.cantMoveUp = function()
+		{
+			return !vm.selectedList.$activeIndex;
+		};
+
+		vm.cantMoveDown = function()
+		{
+			return !angular.isDefined(vm.selectedList.$activeIndex) || vm.selectedList.$activeIndex >= vm.selectedList.length - 1;
+		};
+
+		vm.cantMoveLeft = function()
+		{
+			return !angular.isDefined(vm.selectedList.$activeIndex);
+		};
+
+		vm.cantMoveRight = function()
+		{
+			return !angular.isDefined(vm.availableList.$activeIndex);
+		};
+	}
+
+	ngModule.directive('whenScrolled', function()
+	{
+		return function(scope, el, attr)
+		{
+			if(!attr.whenScrolled || !el.length) return;
+
+			var tag = el[0].nodeName.toLowerCase();
+			//if body or html: attach to window / document scrolling event
+			if(tag == "body" || tag == "html")
+				angular.element(window).bind('scroll', function(evt)
+				{
+					var maxTop = document.documentElement.scrollHeight - window.innerHeight;
+					if (window.scrollY >= maxTop)
+						scope.$apply(attr.whenScrolled);
+				});
+			else
+			//if any other element: attach to the element's scrolling event
+				el.bind('scroll', function(evt)
+				{
+					var rect = el[0].getBoundingClientRect();
+					var maxTop = el[0].scrollHeight - rect.height;
+					if (el[0].scrollTop >= maxTop)
+						scope.$apply(attr.whenScrolled);
+				});
+		};
+	});
+
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

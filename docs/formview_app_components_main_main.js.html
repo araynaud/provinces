@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: formview/app/components/main/main.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: formview/app/components/main/main.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @module formview/components/formView
+ * @description
+ *   The core component implemented as an angular directive
+ * @author Matthew Carroll &lt;carroll@codescience.com>
+ * @requires formlyVersion
+ * @requires $log
+ * @requires $scope
+ * @requires app/services/SubmissionService.js
+ *
+ * @example
+ *   Usage:
+ *   &lt;main>&lt;/main>
+ */
+
+module.exports = function (ngModule)
+{
+	'use strict';
+
+	ngModule.component('formView', {
+		template: require('./main.html'),
+		controllerAs: 'vm',
+		controller: FormViewNgController
+	});
+
+	FormViewNgController.$inject = ['$rootScope', '$timeout', 'CommonUtils', 'RemoteActionService', 'FormValidationService', 'TabService', 'SubmissionService', 'ToastService', 'NavigationService', 'ProductTestService' ];
+	function FormViewNgController  ( $rootScope,   $timeout,   CommonUtils,   RemoteActionService,   FormValidationService,   TabService,   SubmissionService,   ToastService,   NavigationService,   ProductTestService  )
+	{
+		// ----------------- setup -------------------
+		const vm = window.formview = this;
+		//to enable debug features: pass &amp;debug=true in url
+		vm.printDebug = RemoteActionService.debug = NavigationService.debug;
+
+		if(vm.printDebug) {	//expose services as global variables only in debug mode
+			vm.rootScope = $rootScope;
+			vm.SubmissionService     = SubmissionService;
+			vm.ProductTestService    = ProductTestService;
+			vm.FormValidationService = FormValidationService;
+		}
+
+		$rootScope.isDebugMode = () => vm.printDebug;
+		vm.labels = window.labels || {};
+		vm.categoryOptions = CommonUtils.translateOptions(window.fileUploadSettings.categories, vm.labels.category);
+
+		vm.$onInit = function()
+		{
+			vm.TabService = TabService;
+			vm.isdtp      = NavigationService.getParameter("isdtp");
+			vm.listViewId = NavigationService.getParameter("vid");
+			vm.taskId     = NavigationService.getParameter("tid");
+			vm.groupId    = NavigationService.getParameter("gid");
+			vm.fromDocLibrary = NavigationService.getParameter("documentlibrary") == "on";
+			vm.showErrorSummary = false;
+
+			//import debugging functions from TabService
+			vm.toggleReadOnly         = TabService.toggleReadOnly;
+			vm.getFormElement         = TabService.getFormElement;
+			vm.getAllFormElements     = TabService.getAllFormElements;
+			vm.getFormElementByLabel  = TabService.getFormElementByLabel;
+			vm.getFormElementsByLabel = TabService.getFormElementsByLabel;
+			vm.getFormElementsByType  = TabService.getFormElementsByType;
+			vm.getAnswersByType       = TabService.getAnswersByType;
+			vm.cardToTable            = TabService.cardToTable;
+			vm.downloadDocument       = NavigationService.downloadContentVersion;
+			$rootScope.goToObject     = vm.goToObject;
+
+			//import functions from FormValidationService
+			vm.isFormChanged  = FormValidationService.isFormChanged;
+			vm.setAllPristine = FormValidationService.setAllPristine;
+			vm.isReadOnly     = FormValidationService.isReadOnly;
+			vm.isEditable     = FormValidationService.isEditable;
+			//function to display label of selected picklist item
+			$rootScope.getOptionByValue = vm.getOptionByValue = CommonUtils.getOptionNameByValue;
+			$rootScope.runSoqlQuery = TabService.runSoqlQuery;
+			vm.pdfDocument          = TabService.pdfDocument;
+
+			vm.settings                 = window.formViewSettings || {};
+			vm.sessionId                = vm.settings.sessionId;
+			vm.userId                   = vm.settings.userId;
+			vm.containerGlobalId        = vm.settings.containerGlobalId;
+			vm.containerInstanceId      = vm.settings.containerInstanceId;
+			const template              = CommonUtils.getVar("container.containerTemplate", vm.settings);
+			vm.containerTemplateId      = template &amp;&amp; template.id || template;
+			vm.lastSavedDate            = CommonUtils.formatDate(vm.settings.lastSavedDate, "longDateTime");
+			vm.isPreview                = vm.settings.isPreview;
+			vm.previewActor             = vm.settings.workflowActorType;
+			$rootScope.isRequestClosed  = vm.settings.isRequestClosed;
+			$rootScope.isRequestOpen    = vm.settings.isRequestOpen;
+			vm.navOptions               = vm.settings.navOptions;
+			$rootScope.lastSubmissionDate = vm.lastSubmissionDate = 0;
+
+			if(!vm.navOptions.showSaveButton)
+				vm.navOptions.showSaveButton = !vm.settings.isRequestClosed &amp;&amp; ProductTestService.enableConditionalPass();
+
+			//limit width for truncation == 170px
+			vm.limitWidth = 180;
+			vm.history = [];
+			vm.showPopover = false;
+
+			// ---------------- load initial layout and answers --------------
+			vm.forms = FormValidationService.forms;
+			vm.initFormHeaderModel();
+
+			vm.logLoadTime();
+
+			vm.headerActions = [{ text: "Debug", show: () => vm.isPreview, click: () => vm.printDebug = !vm.printDebug }];
+
+			vm.closeDialogActions = [
+				{ text: "No",  click: vm.redirectTo, close: true },
+				{ text: "Yes", click: vm.saveAndClose, close: true }
+			];
+
+			TabService.pdfDialog = vm.pdfDialog = {
+				visible: false,
+				columns: 4,
+				fields: [
+					{field: "name",           type: "text",     label: "Document Name", required: true, columns: 3 },
+					{field: "category",       type: "picklist", label: "Category",      required: true, options: vm.categoryOptions },
+					{field: "expirationDate", type: "date",     label: "Expiration Date", min: "tomorrow" },
+					{field: "orientation",    type: "picklist", label: "Orientation", options: ["portrait", "landscape"] },
+					{field: "format",         type: "picklist", label: "Format",      options: ["pdf", "html"], show: $rootScope.isDebugMode },
+					{field: "deleteTemp",     type: "picklist", label: "Delete Temporary HTML docs", show: $rootScope.isDebugMode }
+				],
+				actions: [
+					{ text: "Save in Library", icon: "document", svg: "standard", click: () => vm.convertToPDF(true),  main: true, disable: () => TabService.converting || String.isBlank(vm.pdfDocument.name),  showLoader: () => TabService.converting == "save",  title: "Save this form in PDF format \nin Document Library" },
+					{ text: "Download",        icon: "pdf",      svg: "doctype",  click: () => vm.convertToPDF(false), main: true, disable: () => TabService.converting,                                         showLoader: () => TabService.converting == "open",  title: "Download this form in PDF format \n(without saving in Document Library)" }
+				]
+			};
+
+			TabService.pdfViewDialog = vm.pdfViewDialog = {
+				visible: false,
+				actions: [
+					{ text: "Go To Library", icon: "document", svg: "standard", close: true, click: vm.goToLibrary },
+					{ text: "Open Document", icon: "pdf", svg: "doctype", close: true, click: () => vm.downloadDocument(TabService.pdfContentVersionId) }
+				]
+			};
+
+			vm.submissionHistoryColumns = [
+				{ field: "dateAndTime", label: vm.labels.common.dateAndTime, dateFormat: vm.labels.dateFormat.shortDateTime },
+				{ field: "actionType",  label: vm.labels.common.action },
+				{ field: "actorName",   label: vm.labels.common.tradingPartner, title: row => row.actorName + "\n" + row.actorType }
+			];
+
+			window.onresize = () => $timeout(vm.maxTabs);
+
+			vm.loadForm();
+		};  //end $onInit
+
+		vm.loadForm = function()
+		{
+			TabService.loadFormLayout().then(function()
+			{
+				vm.tabs = FormValidationService.tabs = TabService.tabs;
+				vm.initTabWidths(vm.tabs);
+				vm.logLoadTime();
+			});
+
+			//load answers async
+			vm.loadAnswers();
+			//$timeout(vm.loadAnswers, 1000);
+		};
+
+		vm.loadAnswers = function()
+		{
+			TabService.loadAllFormAnswers().then(function() {
+				vm.model = TabService.model;
+				vm.history = TabService.history;
+				angular.forEach(vm.history, h => {h.actionType = vm.labels.workflowStatus[h.actionType] || h.actionType}); 
+				vm.logLoadTime();
+				TabService.populateQueryAnswers();
+			});
+		};
+
+		vm.logLoadTime = function() {
+			if(!vm.settings.loadTime) return;
+
+			if(!vm.loadTimes) vm.loadTimes = [];
+
+			vm.loadTime = new Date() - vm.settings.loadTime;
+			console.log ("Form loaded in", vm.loadTime, "ms.");
+			vm.loadTimes.push(vm.loadTime);
+		};
+
+		vm.initFormHeaderModel = function()
+		{
+			const headerData = CommonUtils.getVar("settings.formHeaderData", vm);
+			if(!headerData) return;
+
+			vm.headerTitle = headerData.title;
+			vm.leftSubtitles = [];
+
+			var product = CommonUtils.getVar("settings.container.iCIXProduct", vm);
+			if(product) {
+				product.click = vm.goToObject;
+				vm.leftSubtitles.push(product);
+			}
+
+			if(Array.isNotEmpty(headerData.productIds))
+				vm.leftSubtitles.push(headerData.productIds);
+
+			vm.rightSubtitles = [];
+			// AP-955 Comment out Testing Program link in the TRF
+			// var testingProgram = CommonUtils.getVar("settings.defaultTestingProgram", vm);
+			// if(testingProgram) {
+			// 	testingProgram.click = vm.goToObject;
+			// 	vm.rightSubtitles.push(testingProgram);
+			// }
+
+			if(headerData.requestGlobalId &amp;&amp; vm.settings.testingProgramId)
+				vm.rightSubtitles.push(vm.labels.common.testReport + ' # ' + headerData.requestGlobalId);
+		};
+
+		vm.initTabWidths = function(tabs)
+		{
+			if(Array.isEmpty(tabs))
+				return [];
+
+			// tab vars
+			vm.titleWidth = 0;
+			vm.tabWidths = [];
+
+			// add the function needed for regex to be active
+			for(var t = 0; t &lt; Array.getCount(tabs); t++)
+			{
+				var tab = tabs[t];
+				vm.titleWidth += 32 + 11 * String.getLength(tab.title); //padding + character width
+				vm.tabWidths.push(vm.titleWidth); //each element = total width up to that tab.
+			}
+			return vm.tabWidths;
+		};
+
+		vm.maxTabs = function()
+		{
+			if(Array.isEmpty(vm.tabs)) return 0;
+
+			vm.windowWidth = window.innerWidth;
+			//fit all tabs
+			if(vm.titleWidth &lt; vm.windowWidth)
+				return vm.tabs.length;
+
+			//or fit only first N tabs
+			for(var n = vm.tabs.length - 1; n >= 0; n--)
+				if(vm.tabWidths[n] &lt; vm.windowWidth)
+					return n + 1;
+
+			return 0;
+		};
+
+		//Re-Use form, check if there are other instances of the form. Container__c->Container_Templates__c=> Container__c's
+		vm.checkPreviousInstances = function()
+		{
+			TabService.checkPreviousInstances(vm.containerGlobalId).then(function(result) {
+				vm.previousInstances = result;
+			});
+		};
+
+		//formSaved : false if closing, true if save/submit
+		vm.redirectTo = function (formSaved)
+		{
+			if(formSaved &amp;&amp; window.opener &amp;&amp; vm.navOptions.refreshOpener)
+			{
+				var parentParameters = NavigationService.getParameters(NavigationService.referrerUrl);
+				parentParameters.vid = vm.listViewId;
+				parentParameters.gid = vm.groupId;
+				parentParameters.tid = vm.taskId;
+				window.opener.location.href = NavigationService.getUrl(NavigationService.referrerUrl, parentParameters);
+			}
+
+			if(window.opener || window.history.length == 1)
+				window.close();
+			else if (vm.navOptions.returnUrl)
+				window.location.href = vm.navOptions.returnUrl;
+			else
+				window.history.back();
+		};
+
+		vm.closeForm = function () {
+			if(FormValidationService.isFormChanged()) {
+				vm.toggleCloseDialog();
+			} else {
+				vm.redirectTo();
+			}
+		};
+
+		vm.toggleCloseDialog = function ()
+		{
+			return vm.showModalOnClose = !vm.showModalOnClose;
+		};
+
+		vm.saveAndClose = function ()
+		{
+			vm.saveForm(true, false);
+		};
+
+		vm.print = function()
+		{
+			var editable = vm.isEditable();
+			return TabService.print(editable);
+		};
+
+		//PDF functions
+		vm.openPdfDialog = function()
+		{
+			vm.pdfDocument = TabService.initPdfDocument();
+			vm.pdfDialog.visible = true;
+
+			//if this is a product test form, and product tests are not loaded yet, load product test results data before conversion
+			if(vm.settings.isProductTestForm &amp;&amp; Array.isEmpty(ProductTestService.data.productTests))
+				ProductTestService.loadData();
+		};
+
+		vm.convertToPDF = function(saveInLibrary)
+		{
+			var editable = vm.isEditable();
+			return TabService.saveHtmlDocuments(vm.containerInstanceId, editable, saveInLibrary);
+		};
+
+		vm.openPdfLink = function(format, orientation) {
+			TabService.openPdfLink(vm.containerInstanceId, format, orientation);
+		};
+
+		vm.pdfLinkUrl = function(orientation, format) {
+			if(!orientation) orientation = vm.pdfDocument.orientation;
+			if(!format)      format      = vm.pdfDocument.format;
+			return NavigationService.pageUrl("FormViewPrintPDF", { id: vm.containerInstanceId, format: format, orientation: orientation });
+		};
+
+		vm.pdfLinkFileName = function()
+		{
+			var name = CommonUtils.getVar("pdfDocument.name", vm);
+			if(String.isEmpty(name))
+				return null;
+			return name + ".pdf";
+		};
+
+		vm.deleteTempHtml = function() {
+			return TabService.deleteTempHtml(vm.containerInstanceId);
+		};
+		//end PDF conversion functions
+
+		//Navigation functions
+		vm.goToQuestion = function(element){
+			TabService.selectTab(element.data.tabIndex);
+			$timeout(() => NavigationService.goToAnchor("label_" + element.key));
+		};
+
+		vm.goToSection = function(element){
+			TabService.selectTab(element.data.tabIndex);
+			$timeout(() => NavigationService.goToAnchor("section_" + element.data.sectionId));
+		};
+
+		vm.changeActor = function() {
+			if(vm.previewActor != vm.settings.workflowActorType)
+				NavigationService.goToPage("FormView", { id: vm.containerInstanceId, isdtp: vm.isdtp, actor: vm.previewActor });
+		};
+
+		vm.goToLibrary = function() {
+			NavigationService.goToTab("DocumentLibrary");
+		};
+
+		vm.goToFormBuilder = function()
+		{
+			NavigationService.goToPage("FormBuilder", { id: vm.containerTemplateId, isdtp: vm.isdtp }, "FormBuilder");
+		};
+
+		vm.goToObject = function(obj)
+		{
+			var id = null;
+			if(!obj) obj = this;
+			if (obj) id = angular.isObject(obj) ? obj.Id || obj.id : obj;
+
+			if(id &amp;&amp; angular.isString(id))
+				NavigationService.goToObject(id, "", "details");
+		};
+
+		vm.goToContainerQuery = function() {
+			NavigationService.goToPage("SoqlQueryTest", vm.containerInstanceId, "SoqlQuery");
+		};
+
+		vm.goToContainerTemplateQuery = function() {
+			NavigationService.goToPage("SoqlQueryTest", vm.containerTemplateId, "SoqlQuery");
+		};
+
+		vm.goToAnswerQuery = function()
+		{
+			var query = "SELECT Id, Global_Id__c, Name, Creator_Global_Id__c, CreatedDate, LastModifiedDate, \\n\
+Question__r.Id, Question__r.Global_Id__c, Question__r.Name, Question__r.Answer_Type__c, \\n\
+Multiple_Response_Id__c, Row_Number__c, Version_Number__c, Submitted_Status__c, \\n\
+Container_Answer__c, Supplied_Answer__c, Selected_Answer_Option_Global_Id__c, Selected_Answer_Option__c, \\n\
+Supplied_Date__c, Large_Answer__c, \\n\
+Status_Brand__c, Status_Regulatory__c, Lab_Test_Report_Number__c, Defective_Size__c, Sample_Size__c, Is_Reused__c, JSON_Data__c, \\n\
+Container_Global_Id__c, Container_Instance__c, \\n\
+Container_Question__c, Container_Question_Global_Id__c \\n\
+FROM Container_Answer__c \\n\
+WHERE Container_Global_Id__c = :cid \\n\
+ORDER BY CreatedDate DESC, LastModifiedDate DESC";
+			NavigationService.goToPage("SoqlQueryTest", { cid: vm.containerGlobalId, query: query }, "SoqlQuery");
+		};
+
+		vm.goToElementQuery = function()
+		{
+			var query = "SELECT Id, Name, Global_Id__c, External_ID__c, \\n\
+ClassName__c,  Question_Format__c, \\n\
+Column__c, Columns__c,  Order__c, \\n\
+Read_Only__c,  Visible__c, IsInternalOnly__c, AllowedRoleIds__c, \\n\
+Optionally_Read_Only_For__c, Keep_Editable_For__c, \\n\
+ParentSection__r.Parent_Tab__r.Id, ParentSection__r.Parent_Tab__r.Order__c, ParentSection__r.Parent_Tab__r.Name, \\n\
+ParentSection__r.Id, ParentSection__r.Order__c, ParentSection__r.Name, ParentSection__r.Style__c, \\n\
+LinkedQuestion__r.Id, LinkedQuestion__r.Global_Id__c, \\n\
+LinkedQuestion__r.Name, LinkedQuestion__r.Question_Text__c, \\n\
+LinkedQuestion__r.Answer_Type__c, LinkedQuestion__r.Read_Only__c \\n\
+FROM Element__c \\n\
+WHERE ParentSection__r.Parent_Tab__r.ParentLayout__r.Parent_Form__c = :tid \\n\
+ORDER BY ParentSection__r.Parent_Tab__r.Order__c, ParentSection__r.Order__c, Order__c";
+			NavigationService.goToPage("SoqlQueryTest", { tid: vm.containerTemplateId, query: query }, "SoqlQuery");
+		};
+
+		vm.goToQuestionQuery = function()
+		{
+			var query = "SELECT Id, Global_Id__c, External_ID__c,  CreatedDate, LastModifiedDate, Name, Question_Text__c, \\n\
+Answer_Regex_Flag__c, Answer_Regex__c, Answer_Type__c, Creator_Global_Id__c, \\n\
+Data_Mapping_Action__c, Data_Mapping_Class__c, Data_Mapping__c, \\n\
+Dependency_Action__c, Dependent_Answer__c, \\n\
+Form__c, Form_Global_Id__c, Formula__c, \\n\
+Library_Question__c, MaxScale__c, MinScale__c, Multi_Response_Limit__c, Multi_Response__c, \\n\
+Option_List_Name__c, Parent_Question_Global_Id__c, Parent_Question__c, Parent_Questions__c, \\n\
+Placeholder_Text__c, Read_Only__c, Response_Required__c, \\n\
+System_Field_Id__c, Tooltip__c, Validation_Message__c, \\n\
+Data_Entity__c, Sub_Data_Entity__c, \\n\
+Do_Not_Require_Upload_Date__c, Original_Question_Global_Id__c, Original_Question__c \\n\
+FROM Question__c \\n\
+WHERE Form__c = :tid \\n\
+ORDER BY Id";
+			NavigationService.goToPage("SoqlQueryTest", { tid: vm.containerTemplateId, query: query }, "SoqlQuery");
+		};
+
+		vm.goToContainerQuestionQuery = function()
+		{
+			var query = "SELECT Id, Global_Id__c, Name, CreatedDate, LastModifiedDate, Container_Instance__c, Creator_Global_Id__c, Exempt__c, \\n\
+Product_Test__c, Product_Test__r.Test__r.Test_Name__c, \\n\
+Product_Test_Group__c, Product_Test_Group__r.Name, \\n\
+	(SELECT Id, Name, Global_Id__c, Creator_Global_Id__c, Multiple_Response_Id__c, \\n\
+	Container_Answer__c, Supplied_Answer__c, Large_Answer__c, JSON_Data__c, \\n\
+	Question__c, Question_Global_Id__c, \\n\
+	Selected_Answer_Option__c, Selected_Answer_Option_Global_Id__c, \\n\
+	Status_Brand__c, Status_Regulatory__c, Row_Number__c, Version_Number__c, \\n\
+	OperatorValue__c, UnitOfMeasureValue__c, \\n\
+	Sample_Size__c, Defective_Size__c, Is_Reused__c \\n\
+	FROM Container_Answers__r) \\n\
+FROM Container_Question__c \\n\
+WHERE Container_Global_Id__c = :cid \\n\
+ORDER BY CreatedDate DESC, LastModifiedDate DESC";
+			NavigationService.goToPage("SoqlQueryTest", { cid: vm.containerGlobalId, query: query }, "SoqlQuery");
+		};
+
+		vm.goToCommentQuery = function()
+		{
+			var query = "SELECT Id, Global_Id__c, Name, Creator_Global_Id__c, CreatedDate, CreatedById, LastModifiedDate, LastModifiedById, \\n\
+CreatedDateTime__c, LastModifiedDateTime__c, Last_Modified_By_Global_Id__c, \\n\
+Container_Global_Id__c, Container_Instance__c, \\n\
+Question_Global_Id__c, Question__r.Id, Question__r.Name, Question__r.Answer_Type__c, \\n\
+Container_Question_Global_Id__c,  Container_Question__r.Id, Container_Question__r.Name, Container_Question__r.Product_Test__c, \\n\
+Comment__c, isMessageRead__c, Status__c, UBE_Id__c, UBE__c, SobjectField__c, SobjectType__c \\n\
+FROM Container_Comment__c \\n\
+WHERE Container_Global_Id__c = :cid \\n\
+ORDER BY Question__c, Container_Question__c, LastModifiedDate";
+			NavigationService.goToPage("SoqlQueryTest", { cid: vm.containerGlobalId, query: query }, "SoqlQuery");
+		};
+
+		vm.goToLogQuery = function()
+		{
+			var query = "SELECT Id,  LastModifiedDate, LogLength, \\n\
+Request, Operation, Application, Status, DurationMilliseconds, StartTime, Location \\n\
+FROM ApexLog  \\n\
+WHERE Operation = 'VFRemoting' \\n\
+ORDER BY LastModifiedDate DESC";
+			NavigationService.goToPage("SoqlQueryTest", { query: query }, "SoqlQueryLog");
+		};
+
+		// ---------------- active/state control --------------
+		vm.previousButtonCheck = function() {
+			return Array.getLength(vm.tabs) > 1 &amp;&amp; TabService.currentTab > 0;
+		};
+
+		// tests the current position of the tabs.
+		vm.nextButtonCheck = function() {
+			return Array.getLength(vm.tabs) > 1 &amp;&amp; TabService.currentTab &lt; vm.tabs.length - 1;
+		};
+
+		// tests the current position of the tabs.
+		vm.submitCheck = function () {
+			return TabService.currentTab ===  Array.getLength(vm.tabs) - 1;
+		};
+
+		// tests the validity of the forms
+		// boolean value will change color to grey of the submit button if true
+		vm.validateForm = function()
+		{
+			var valid = !FormValidationService.testForms(vm.tabs);
+			var validEmail = !FormValidationService.testEmailsFormat();
+			var requiredFields = !FormValidationService.testFormsFieldsRequired();
+
+			//for a product test form: if actor is Lab (results editable):
+			var invalidProductTests = false;
+			if(TabService.hasProductTests &amp;&amp; !ProductTestService.data.partiallyReadOnly)
+				invalidProductTests = ProductTestService.validateTestResults();
+
+			var errorMessage = '';
+			//Validates required fields empty and email format error.
+			if(!requiredFields)
+				errorMessage = "Please fill in all required fields";
+
+			if(!validEmail)
+				errorMessage += "\nPlease enter answers in valid format.";
+
+			if(invalidProductTests == "NO_TESTS" || invalidProductTests == "ALL_EMPTY")
+				errorMessage += "\nPlease enter results for at least 1 Product Test.";
+			else if(invalidProductTests == "ALL_EXEMPT")
+				errorMessage += "\nAll Product Tests cannot be exempt.";
+			else if(invalidProductTests == "DEFECTIVE_SIZE_REQUIRED")
+				errorMessage += "\nPlease enter Defective Size for all failing Product Tests.";
+			else if(invalidProductTests == "DATE_TESTED_REQUIRED")
+				errorMessage += "\nPlease enter Test Report Date.";
+			else if(invalidProductTests)
+				errorMessage += "\nPlease enter results for all required Product Tests.";
+
+			if(!valid &amp;&amp; String.isEmpty(errorMessage))
+				errorMessage = "\nThe Form contains invalid answers.";
+
+			valid = valid &amp;&amp; validEmail &amp;&amp; requiredFields &amp;&amp; !invalidProductTests;
+			vm.showErrorSummary = !valid;
+			if(!valid)
+			{
+				NavigationService.goToAnchor("origin-main");
+				ToastService.toast(errorMessage.trim(), "error", 3000);
+			}
+
+			return valid;
+		};
+
+		vm.getInvalidFields = function () {
+			return vm.invalidFields = TabService.getInvalidFields();
+		};
+
+		vm.submitForm = function()
+		{
+			//Make sure that all tabs are loaded before validating the form
+			//show submit button spinner starting here
+			vm.showErrorSummary = true;
+			vm.saving = "submit";
+			TabService.loadAllTabs(true, function()
+			{
+				if(vm.validateForm())
+					vm.saveForm(true, true);
+			});
+		};
+
+		/** @method saveValues
+		@description Triggers an async save / submit of the current values of the form.
+		@param close  (boolean) : close page after save
+		@param submit (boolean) : submit, progress workflow/request
+		*/
+		vm.saveForm = function (close, submit)
+		{
+			vm.saving = submit ? "submit" : "save";
+
+			//if product tests are not loaded yet, or not a product test form: just Save / Submit the form
+			if(!TabService.hasProductTests || !ProductTestService.data.productTests)
+				return vm.saveFormAnswers(close, submit);
+
+			//with product test: save product test answers, then Execuctive Summary, then save / submit form
+			//remove spacers from product tests (those without id)
+			//TODO: do not use productTestResults global var: move to ProductTestService.data.productTests
+			//self.saveProductTestResults = function (productTestQuestionId, executiveSummary, productTests)
+			return SubmissionService.saveProductTestResults(ProductTestService.questionGlobalId, ProductTestService.data.productTestExecutiveSummary, ProductTestService.data.productTests, ProductTestService.productTestIdsToDelete, submit)
+				.catch(vm.onSaveError)
+				.then(function(result)
+				{
+					if(!result) return;
+
+					ProductTestService.productTestIdsToDelete = [];
+					console.log("Product Test Results and Executive Summary saved. ", result);
+					//Then Save or Submit the rest of the form.
+					//if new Product Tests have been added, reload test results after saving to get their Ids
+					vm.saveFormAnswers(close, submit).then(function() {
+						if(ProductTestService.hasAddedProductTests())
+							ProductTestService.loadProductTestResults(true);
+					});
+				});
+		};
+
+		vm.saveFormAnswers = function (close, submit)
+		{
+			close = !!close;
+			submit = !!submit;
+			vm.saving = submit ? "submit" : "save";
+			vm.closing = close;
+
+			return SubmissionService.save(vm.model, submit)
+				.catch(vm.onSaveError)
+				.then(function(result)
+				{
+					var verb = submit ? "submitted" : "saved";
+					console.log("The form has been " + verb + ".  model:", vm.model);
+					if(!vm.saveError)
+						ToastService.toast("The form has been " + verb + ".", "success", 2000);
+					FormValidationService.setAllPristine(); //clear modified form flags
+					vm.saveError = null;
+					if(String.startsWith(result, "Success"))
+						vm.lastSavedDate = CommonUtils.formatDate(result.substringAfter(" "), "longDateTime");
+
+					//if form opened from CreateRequest or RequestApproveAndRetest page: revalidate selected forms after saving
+					var validateSelectedContainers = CommonUtils.getVar("opener.CreateRequest.validateSelectedContainers")
+						|| CommonUtils.getVar("opener.approveRetestController.validateSelectedContainer");
+					if(validateSelectedContainers)
+						validateSelectedContainers();
+				});
+		};
+
+		vm.onSaveError = function(error)
+		{
+			vm.saving = false;
+			vm.saveError = error;
+
+			if(angular.isObject(error)) {
+				console.error(error.method + ":", error.message, error);
+				ToastService.toast(error.method + ": " +  error.message, "error", 0);
+			}
+			else if(angular.isString(error)) {
+				console.error(error);
+				ToastService.toast(error, "error", 0);
+			}
+		};
+
+		vm.toastOnClose = function()
+		{
+			if(vm.closing)
+				vm.redirectTo(true);
+			else
+				vm.saving = false;
+		};
+
+		//get form element by tab, section and element index
+		vm.getAllStyles = function()
+		{
+			var result = "";
+			var styles = angular.element("style");
+			for(var i = 1; i &lt; styles.length; i++)
+				result += "\n" + styles.eq(i).html() + "\n";
+			return result;
+		};
+
+		vm.toggleHistory = function()
+		{
+			vm.showHistoryPopover = !vm.showHistoryPopover;
+		};
+
+		vm.getLastSubmissionDate = function(history) {
+			$rootScope.lastSubmissionDate = vm.lastSubmissionDate = 0;
+			if(Array.isEmpty(history)) return vm.lastSubmissionDate;
+
+			var lastSubmission = history.find(h => String.equals(h.actionType, "Submitted"));
+			if(lastSubmission)
+				$rootScope.lastSubmissionDate = vm.lastSubmissionDate = lastSubmission.dateAndTime;
+
+			return vm.lastSubmissionDate;
+		};
+
+		//to show comment summary bar
+		vm.showCommentSummary = function()
+		{
+			var loadedElements = TabService.getAllFormElements();
+			var elementWithComments = loadedElements.filter(e => Array.isNotEmpty(e.templateOptions.comments));
+			return Array.isNotEmpty(TabService.comments) || Array.isNotEmpty(elementWithComments);
+		};
+	} //end FormViewNgController
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

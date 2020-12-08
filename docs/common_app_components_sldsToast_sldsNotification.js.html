@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/sldsToast/sldsNotification.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/sldsToast/sldsNotification.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/sldsNotification
+
+@description This component can be used to display single or multiple notification messages.
+Each notification contains a message and due date, and can be closed manually or after a specified duration.
+
+@example {message: "Message 1", dueDate: '5/5/2045', visible: true, duration: 1000 }
+
+@param notifications   {Object[]}          = notification objects to display
+@param visible         {Boolean}           = controls visibility of the component. true: open / default: closed
+@param variable        {optional|String}   @ global variable name
+@param message     {optional|string}       @
+@param duration    {optional|Number}       @
+@param html        {optional|Boolean}      =
+@param icon        {optional|string}       @
+@param svg         {optional|string}       @
+@param onClose     {object[]}              =
+@param redirect    {object[]}              =
+
+@example (on MultiSelectTest.page)
+&lt;slds-notification visible="vm.showNotifications" notifications="vm.notifications" duration="5000">&lt;/slds-notification>
+
+vm.notifications = [
+	{message: "Message 1", dueDate: '5/5/2045', visible: true, duration: 1000 },
+	{message: "Message 2", dueDate: '5/5/2050', visible: true, duration: 5000 },
+	{message: "Message 3", dueDate: '5/5/2068', visible: true, duration: 10000 }
+];
+*/
+
+module.exports = function (ngModule)
+{
+	const statusIcons = { error: 'warning', warning: 'warning', success: 'notification'};
+
+	ngModule.component('sldsNotification', {
+		bindings: {
+			notifications: '=',
+			visible: '=',
+			duration: '@',
+			variable: '@',
+			redirect: '=',
+			onClose: '=',
+			html: '=?'
+		},
+		template: require('./sldsNotification.html'),
+		controllerAs: 'vm',
+		controller: SldsNotificationController
+	});
+
+	SldsNotificationController.$inject = ['$scope', '$timeout', '$sce', 'CommonUtils', 'NavigationService'];
+	function SldsNotificationController  ( $scope,   $timeout,   $sce,   CommonUtils,   NavigationService )
+	{
+		var vm = window.sldsNotification = this;
+
+		vm.$onInit = function()
+		{
+			CommonUtils.setVar(vm.variable, vm);
+			console.log("sldsNotification.init", vm.variable);
+			vm.defaultState = vm.getState(vm.state || vm);
+			vm.resetState();
+			// Delete After test
+			vm.visible = true;
+			console.log("sldsToast.init", vm.variable, vm.state, vm.message, vm.date);
+		};
+
+		vm.resetState = function() {
+			return vm.state = Object.assign({}, vm.defaultState);
+		};
+
+		vm.getState = function(from)
+		{
+			var state = {};
+			state.status = from.status ? from.status.toLowerCase() : '';
+			state.html =  !!from.html;
+
+			if(from.message)   state.message   = from.html ? $sce.trustAsHtml(from.message) : from.message;
+			if(from.dueDate)   state.dueDate   = from.dueDate;
+			if(from.duration)  state.duration  = from.duration;
+
+			state.icon = from.icon || statusIcons[state.status];
+			state.svg  = from.svg  || "utility";
+			return state;
+		};
+
+		$scope.$watch('vm.visible', function(newVal, oldVal)
+		{
+			vm.close(vm.state.duration);
+		});
+
+		$scope.$watch('vm.notifications', function(newVal, oldVal)
+		{
+			//console.log("message: message", vm.message);
+			angular.forEach(newVal, function(value, key){
+				vm.close(value.duration || vm.state.duration, value);
+			});
+		});
+
+		$scope.$on('notificationClose', function(event, duration)
+		{
+			//console.log("sldsNotification: notificationClose", duration);
+			vm.close(duration);
+		});
+
+		//Notification will be close on X button
+		vm.close = function(duration, notification)
+		{
+			if(duration > 0)
+				return $timeout(() => vm.close(null, notification), duration);
+
+			if(notification){
+				notification.visible = false;
+			}else{
+				vm.visible = false;
+			}
+
+			if(angular.isFunction(vm.onClose))
+				vm.onClose();
+
+			if(String.isNotEmpty(vm.redirect))
+				NavigationService.goToObject(vm.redirect);
+		};
+
+		//On-click of Link Page will Redirect to TaskListPage
+		vm.redirectToTask = function()
+		{
+			NavigationService.goToPage("TaskListPage");
+		};
+	}
+
+	ngModule.service('NotificationService', NotificationService);
+	NotificationService.$inject = ['$rootScope'];
+	function NotificationService  ( $rootScope )
+	{
+		var svc = window.NotificationService = this;
+
+		/** Show notification message.
+		Usage: NotificationService.notify(message, status, duration, html)
+		or     NotificationService.notify({message: '&lt;b>Congratulations&lt;/b> buddy', status: 'success', duration: 5000, html: true})
+
+		message:  String (plain text or html)
+		status:   type of message: success | error | warning ( default : info)
+		duration: Number milliseconds
+		html:     true if message contains html tags / otherwise: false/null/undefined
+		**/
+		svc.notify = function(message, date, status, duration, html)
+		{
+			if(angular.isString(message))
+			{
+				message = { message: message };
+				if(duration) message.duration = duration;
+				if(html) message.html = html;
+			}
+			$rootScope.$broadcast('notificationMessage', message);
+		};
+
+		/** Close notification message.
+		duration: close after specified Number of milliseconds. if 0 or null or undefined: close immediately
+		**/
+		svc.close = function(duration)
+		{
+			$rootScope.$broadcast('notificationClose', duration);
+		};
+	}
+
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

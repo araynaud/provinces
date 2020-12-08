@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/services/arrayExtensions.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/services/arrayExtensions.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @description Extension functions for String, Array, Objects.
+*/
+
+module.exports = function(ngModule){
+
+//global variable test functions
+	function isMissing(variable)
+	{
+		return typeof variable === "undefined" || variable === null;
+	}
+	String.isMissing = Array.isMissing = Object.isMissing = isMissing;
+
+	function isDefined(variable, ctx)
+	{
+		if(!ctx) ctx = window;
+		if(!variable) return ctx;
+
+		var arr = variable.split(".");
+		for(var i = 0; i &lt; arr.length; i++)	{
+			if(isMissing(ctx[arr[i]])) return false;
+			ctx = ctx[arr[i]];
+		}
+		return true;
+	}
+
+	function valueIfDefined(variable, ctx)
+	{
+		if(!ctx) ctx = window;
+		if(!variable) return ctx;
+
+		var arr = Array.isArray(variable) ? variable : variable.split(".");
+		if(arr.length == 1) //if no . return directly
+			return ctx[variable];
+
+		for(var i = 0; i &lt; arr.length; i++) {
+			if(isMissing(ctx[arr[i]])) return ctx[arr[i]];
+			ctx = ctx[arr[i]];
+		}
+		return ctx;
+	}
+
+	function valueOrDefault(variable, defaultValue)
+	{
+		return isMissing(variable) ? defaultValue : variable;
+	}
+
+	function isObjectNotArray(input)
+	{
+		return angular.isObject(input) &amp;&amp; !angular.isArray(input);
+	}
+
+	// ============= for string or array =============
+
+	/** @module String
+@description String extension functions
+*/
+
+	/** @method isEmpty
+@description tests if a variable is undefined or null, or Array has no elements, or string is Empty, or Object has no fields.
+@param variable {any} variable to test
+@return {boolean} true if variable is empty, false otherwise
+*/
+
+	function isEmpty(variable)
+	{
+		if(isMissing(variable)) return true;
+		if(!isMissing(variable.length)) return variable.length === 0;
+		if(angular.isObject(variable))	return !Object.hasKeys(variable);
+		return false;
+	}
+	String.isEmpty = Array.isEmpty = Object.isEmpty = isEmpty;
+
+	/** @method isNotEmpty
+@description tests if a variable is defined, and Array has elements, or string is not Empty, or Object has fields.
+@param variable {any} variable to test
+@return {boolean} true if variable is not empty, false otherwise. Always returns opposite of isEmpty.
+@see module:String~isEmpty
+*/
+	function isNotEmpty(variable)
+	{
+		return !isEmpty(variable);
+	}
+	String.isNotEmpty = Array.isNotEmpty = Object.isNotEmpty = isNotEmpty;
+
+	/** @method getLength
+@description gets Array or String length, or 0 if variable is null or undefined.
+@param variable {any} variable to test
+@return {boolean} Array or String length, or 0 if variable is null/undefined.
+@see module:String~isEmpty
+*/
+
+	/** @method getCount
+@see module:String~getLength
+*/
+	String.getLength = Array.getLength = Array.getCount = function(arr)
+	{
+		if(isMissing(arr)) return 0;
+		if(isMissing(arr.length))
+			arr = arr.toString();
+		return arr.length;
+	};
+
+	// ============= String extension functions =============
+
+	/** @method isBlank
+@description tests if a String contains only blank characters (space, tab, newline)
+@param str {string} String to test
+@return {boolean} true if the trimmed String is empty, false otherwise
+
+@see module:String~isEmpty
+*/
+
+	String.isBlank = function(str)
+	{
+		return String.isEmpty(str) || String.isEmpty(str.toString().trim());
+	};
+
+	/** @method isNotBlank
+@description tests if a String does not contain only blank characters (space, tab, newline)
+@param str {string} String to test
+@return {boolean} true if the trimmed String is not empty, false otherwise
+Always returns opposite of isBlank
+
+@see module:String~isBlank
+*/
+
+	String.isNotBlank = function(str)
+	{
+		return !String.isBlank(str);
+	};
+
+	if(!String.format) String.format = function(str)
+	{
+		if(String.isBlank(str)) return str;
+		var args = arguments;
+		return str.replace(/\{(\d+)\}/g, (val, index) => args[index - 0 + 1]);
+	};
+
+	/** @method insert
+@description insert a string in in another at specified position
+
+@param str {String} String to test
+@param pos {Number} position to insert str2. if position is invalid, str is not modified
+@param str2 {String} String to insert into str
+
+@return {String} modified string
+*/
+
+	String.insert = function(str, pos, str2)
+	{
+		if(String.isEmpty(str))
+			return str2 || "";
+		return str.insert(pos, str2);
+	};
+
+	String.prototype.insert = function(pos, str)
+	{
+		if(String.isEmpty(str) || pos &lt; 0 || pos > this.length)
+			return this;
+		return this.substr(0, pos) + str + this.substr(pos);
+	};
+
+	/** @method remove
+@description Remove N characters from a string, starting at given position
+
+@param str {String} String to test
+@param pos {Number} start position to remove from str
+@param len {Number} number of characters to remove from str
+
+@return {String} modified string
+*/
+
+	String.remove = function(str, pos, len)
+	{
+		if(!len || String.isEmpty(str))
+			return str;
+		return str.remove(0, len);
+	};
+
+	String.prototype.remove = function(pos, len)
+	{
+		if(!len || pos &lt; 0 || this.length &lt;= pos)
+			return this;
+		return this.substr(0, pos) + this.substr(pos + len);
+	};
+
+	String.prototype.shortId = function(prefix, suffix)
+	{
+		if(prefix &amp;&amp; suffix)
+			return this.remove(3, 6).insert(3, ".");
+		if(prefix)
+			return this.remove(15, 3).remove(3, 6).insert(3, ".");
+		if(suffix)
+			return this.remove(0, 10);
+
+		return this.remove(15, 3).remove(0, 10);
+	};
+
+	/** @method plural
+@description Add plural to string depending on number
+@param nb {Number} number
+@param str {String} singular word
+@param str {optional|String} plural word if different (ex: 'child', 'children') (default: word + 's')
+
+@return {String} pluralized string "No results", "1 result", "3 results" ...
+*/
+
+	String.plural = function(nb, word, pluralWord)
+	{
+		if(!word) return nb;
+
+		if(nb == 1 || nb == -1)
+			return nb + " " + String.toSingular(word);
+
+		if(!nb)
+			nb = valueIfDefined("labels.common.zero") || "No";
+
+		return nb + " " + (pluralWord || String.toPlural(word));
+	};
+
+	String.toPlural   = word => String.pluralize(word, true);
+	String.toSingular = word => String.pluralize(word, false);
+
+	String.pluralize = function(word, isPlural)
+	{
+		if(String.isEmpty(word)) return word;
+
+		word = word.trim();
+		//if multiple words: process each word recursively
+		if(word.includes(" ")) {
+			let words = String.split(word, " ", true, true);
+			words = words.map(w => String.pluralize(w, isPlural));
+			return words.join(" ");
+		}
+
+		//simple word plural: add a s if not already ending with s
+		if(!word.includes("*"))
+			return isPlural &amp;&amp; word[word.length - 1] != "s" ? word + "s" : word;
+
+		//base*plural or base*singular*plural
+		let fragments = String.split(word, "*", false, true);
+		if(fragments.length &lt;= 1) return fragments[0];
+
+		let pluralEnd = fragments.last();
+		let singularEnd = fragments.length >= 3 ? fragments[1] : "";
+		return fragments[0] + (isPlural ? pluralEnd : singularEnd);
+	};
+
+	/** @method split
+@description split String into fragments
+@param str {String} String to test
+@param sep {String|RegExp} separator
+@param filter {optional|Boolean} separator
+@param trim   {optional|Boolean} separator
+@return {String[]} split string
+empty array if imput string is null, undefined or empty
+*/
+
+	//split string
+	//if empty return empty array remove empty strings, trim other ones
+	String.split = function(str, sep, filter, trim)
+	{
+		if(String.isEmpty(str)) return [];
+		var fragments = str.split(sep);
+		if(trim)    fragments = fragments.map(s => s.trim());
+		if(filter)  fragments = fragments.filter(String.isNotEmpty);
+		return fragments;
+	};
+
+	/** @method splitWords
+@description split a string into words
+@param str {String} String to test
+@return {String[]} list of non-empty words
+*/
+	String.splitWords = function(str)
+	{
+		if(String.isBlank(str)) return [];
+		return str.toString().splitWords();
+	};
+
+	/** @method splitWords
+@description split current string into words
+@return {String[]} list of non-empty words
+*/
+	String.prototype.splitWords = function()
+	{
+		const wordRegex = /\b\w*\b/g ;
+		const wordDotRegex = /\b(\.|\w)*\b/g ;
+		return Array.filter(this.match(wordDotRegex), String.isNotEmpty);
+	};
+
+	/** @method startsWith
+@description tests if a String starts with another
+@param str {String} String to test
+@param sub {String} Substring to find at the beginning of str
+@return {boolean} true if str starts with sub
+*/
+
+	String.startsWith = function(str, sub, ignoreCase)
+	{
+		str = String.convert(str);
+		sub = String.convert(sub);
+		if(ignoreCase) {
+			str = str.toLowerCase();
+			sub = sub.toLowerCase();
+		}
+		return str.indexOf(sub) == 0;
+	};
+
+	if(!String.prototype.startsWith)
+		String.prototype.startsWith = function(sub, ignoreCase) {
+			return String.startsWith(this, sub, ignoreCase);
+		};
+
+	/** @method endsWith
+@description tests if a String ends with another
+@param str {String} String to test
+@param sub {String} Substring to find at the end of str
+@return {boolean} true if str ends with sub
+*/
+	String.endsWith = function(str, sub, ignoreCase)
+	{
+		str = String.convert(str);
+		sub = String.convert(sub);
+		if(ignoreCase) {
+			str = str.toLowerCase();
+			sub = sub.toLowerCase();
+		}
+		var end = str.lastIndexOf(sub);
+		return end >= 0 &amp;&amp; end == str.length - sub.length;
+	};
+
+	if(!String.prototype.endsWith)
+		String.prototype.endsWith = function(sub, ignoreCase) {
+			return String.endsWith(this, sub, ignoreCase);
+		};
+
+	/** @method includes / includesIgnoreCase
+@description tests if a String contains with another
+@param str {String} String to test
+@param sub {String} substring to find in str
+@param caseSensitive {optional|boolean} if true: case sensitive, othwerwise: case insensitive
+@return {boolean} true if str contains value
+*/
+	String.includes = function(str, value, caseSensitive)
+	{
+		if(String.isEmpty(str) &amp;&amp; String.isEmpty(value))
+			return true;
+		if(String.isEmpty(str))
+			return false;
+		if(caseSensitive)
+			return str.toString().includes(value);
+		return str.toString().includesIgnoreCase(value);
+	};
+
+	String.prototype.includesIgnoreCase = function(value)
+	{
+		if(String.isEmpty(value))
+			return true;
+		return this.toLowerCase().includes(value.toString().toLowerCase());
+	};
+
+	/** @method regexIndexOf
+@description Get position of the first occuence of a regular expession inside a String.
+@param regex         {String}  Regex to find in str
+
+@return {String} if substring found: 0-based index
+&lt;br/>if substring not found: -1
+&lt;br/>
+*/
+
+	String.prototype.regexIndexOf = function(regex, startpos)
+	{
+		if(!startpos) startpos = 0;
+		var indexOf = this.substring(startpos).search(regex);
+		return (indexOf >= 0) ? (indexOf + startpos) : indexOf;
+	};
+
+	/** @method regexLastIndexOf
+@description Get position of the last occuence of a regular expession inside a String.
+@param regex         {String}  Regex to find in str
+
+@return {String} if substring found: 0-based index
+&lt;br/>if substring not found: -1
+&lt;br/>
+*/
+
+	String.prototype.regexLastIndexOf = function(regex, startpos)
+	{
+		regex = (regex.global) ? regex : new RegExp(regex.source, "g" + (regex.ignoreCase ? "i" : "") + (regex.multiLine ? "m" : ""));
+
+		if(typeof (startpos) == "undefined")
+			startpos = this.length;
+		else if(startpos &lt; 0)
+			startpos = 0;
+
+		var stringToWorkWith = this.substring(0, startpos + 1);
+		var lastIndexOf = -1;
+		var nextStop = 0;
+		var result;
+		while((result = regex.exec(stringToWorkWith)) != null) {
+			lastIndexOf = result.index;
+			regex.lastIndex = ++nextStop;
+		}
+		return lastIndexOf;
+	};
+
+	/** @method substringBefore
+@description Get portion of a string before specified substring, if found.
+@param s             {String}  input string to test
+@param sub           {String}  Substring to find in str
+@param last          {Boolean} true: last occurence of sub / default: first occurence of sub
+@param stringOrEmpty {Boolean} result if substring not found. true: empty string / default: whole input string
+@param include       {Boolean} true: include sub in result / default: do not include sub in result
+@param ignoreCase    {Boolean} true: case-insentitive search for sub / default: case-sensitive
+
+@return {String} if substring found: portion of input string before specified substring
+&lt;br/>if substring not found: stringOrEmpty == true: empty string  / default: whole input string
+&lt;br/>
+*/
+
+	String.substringBefore = function(s, sub, last, stringOrEmpty, include, ignoreCase)
+	{
+		if(String.isEmpty(s)) return String.convert(s);
+
+		var lstr = s   = String.convert(s);
+		var lsub = sub = String.convert(sub);
+		if(ignoreCase) {
+			lstr = lstr.toLowerCase();
+			lsub = lsub.toLowerCase();
+		}
+
+		var pos = last ? lstr.lastIndexOf(lsub) : lstr.indexOf(lsub);
+		if(pos &lt; 0)
+			return stringOrEmpty ? "" : s;
+
+		if(include)
+			pos += sub.length;
+		return s.substring(0, pos);
+	};
+
+	String.prototype.substringBefore = function(sub, last, stringOrEmpty, include, ignoreCase) {
+		return String.substringBefore(this, sub, last, stringOrEmpty, include, ignoreCase);
+	};
+
+	/** @method substringAfter
+@description Get portion of a string after specified substring, if found.
+@param s             {String}  input string to test
+@param sub           {String}  Substring to find in str
+@param last          {Boolean} true: last occurence of sub / default: first occurence of sub
+@param stringOrEmpty {Boolean} result if substring not found. true: whole input string / default: empty string
+@param include       {Boolean} true: include sub in result / default: do not include sub in result
+
+@return {String} if substring found: portion of input string after specified substring.
+&lt;br/>if substring not found: stringOrEmpty == true: whole input string / default: empty string
+&lt;br/>
+*/
+
+	String.substringAfter = function(s, sub, last, stringOrEmpty, include, ignoreCase)
+	{
+		if(String.isEmpty(s)) return String.convert(s);
+
+		var lstr = s   = String.convert(s);
+		var lsub = sub = String.convert(sub);
+		if(ignoreCase) {
+			lstr = lstr.toLowerCase();
+			lsub = lsub.toLowerCase();
+		}
+
+		var pos = last ? lstr.lastIndexOf(lsub) : lstr.indexOf(lsub);
+		if(pos &lt; 0)
+			return stringOrEmpty ? s : "";
+
+		if(!include)
+			pos += sub.length;
+
+		return s.substring(pos);
+	};
+
+	String.prototype.substringAfter = function(sub, last, stringOrEmpty, include, ignoreCase) {
+		return String.substringAfter(this, sub, last, stringOrEmpty, include, ignoreCase);
+	};
+
+	/** @method capitalize
+@description capitalize a string: make 1st char upper case and the rest lowercase  ("word" => "Word")
+@param str {String}  input string to test
+
+@return {String} capitalized string
+*/
+	String.capitalize = function(str)
+	{
+		if(String.isBlank(str)) return str;
+		str = str.toString();
+		return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+	};
+
+	String.prototype.capitalize = function()
+	{
+		return String.capitalize(this);
+	};
+
+	/** @method escapeXml
+@description Escapes the characters in a String using XML entities. Identical to the Apex String.escapeXml method
+Supports only the five basic XML entities (gt, lt, quot, amp, apos).
+@param str {String}  input string to test
+@return {String} escaped string
+*/
+	String.escapeXml = function(str)
+	{
+		if(String.isEmpty(str)) return str;
+		return str.toString().escapeXml();
+	};
+
+	String.prototype.escapeXml = function()
+	{
+		return this.replace(charEntityRegex, match => "&amp;" + charEntityMap[match] + ";");
+	};
+
+	/** @method unescapeXml
+@description Unescapes XML entities in a String back to the corresponding characters. Identical to the Apex String.unescapeXml method
+Supports only the five basic XML entities (gt, lt, quot, amp, apos).
+@param str {String} input string to tet
+@return {String} unescaped string
+*/
+	String.unescapeXml = function(str)
+	{
+		if(String.isEmpty(str)) return str;
+		return str.toString().unescapeXml();
+	};
+
+	String.prototype.unescapeXml = function() {
+		return this.replace(entityCharRegex, match => entityCharMap[match.substring(1, match.length - 1)] );
+	};
+
+	String.replaceAll = function(str, from, to) {
+		if(String.isEmpty(str)) return str;
+		return str.toString().replaceAll(from, to);
+	};
+
+	String.prototype.replaceAll = function(from, to) {
+		return this.replace(new RegExp(from, "ig"), to);
+	};
+
+	/** @method convert
+@description Ensure output value is a string. convert null / undefined / non-string values to string.
+@param a {String} input variable
+@return  {String} variable converted to string
+*/
+	String.convert = function(a)
+	{
+		return isEmpty(a) ? "" : a + "";
+	};
+
+	/** @method compare
+@description Comparison function used in Array sorting functions
+@param a {String|any} input variable
+@param b {String|any} input variable
+@param caseSensitive {optional|boolean} if true: case sensitive, othwerwise: case insensitive
+@param useLocale {optional|boolean} if true: use browser locale
+@return {Number} 0 if a == b
+&lt;br/>1 if a > b
+&lt;br/>-1 if a &lt; b
+*/
+	String.compare = function(a, b, caseSensitive, useLocale)
+	{
+		a = String.convert(a);
+		b = String.convert(b);
+
+		if(!caseSensitive &amp;&amp; useLocale)
+		{
+			a = a.toLocaleLowerCase();
+			b = b.toLocaleLowerCase();
+		}
+		else if(!caseSensitive)
+		{
+			a = a.toLowerCase();
+			b = b.toLowerCase();
+		}
+
+		if(a > b) return 1;
+		if(a &lt; b) return -1;
+		return 0;
+	};
+
+	/** @method equals
+@description Tests if 2 strings are equivalent (if result of String.compare == 0)
+@param a {String|any} input variable
+@param b {String|any} input variable
+@param caseSensitive {optional|boolean} if true: case sensitive, othwerwise: case insensitive
+@returns {Boolean} true if result of String.compare == 0
+@see module:String~compare
+*/
+	String.equals = function(a, b, caseSensitive)
+	{
+		return !String.compare(a, b, caseSensitive);
+	};
+
+	String.prototype.equals = function(b, caseSensitive)
+	{
+		return !String.compare(this, b, caseSensitive);
+	};
+
+	/** @methid containsNumber
+@description Test if a string contains at least one number
+@param str {String|any} input variable
+@returns {Boolean} true if string contains at least one number.
+*/
+	String.containsNumber = function(str) {
+		return /\d/.test(str);
+	};
+
+	String.prototype.containsNumber = function() {
+		return /\d/.test(this);
+	};
+
+	//append 2 string with separator in between
+	String.appendString = function(input, separator, str)
+	{
+		if(arguments.length == 2) {
+			str = separator;
+			separator = '';
+		}
+
+		if(isMissing(input)) input = '';
+		if(isMissing(str))   str = '';
+		if(isEmpty(str))   return input;
+		if(isEmpty(input)) return str;
+
+		if(isMissing(separator)) separator = '';
+		return input + separator + str;
+	};
+
+	String.prototype.appendString = function(separator, str)
+	{
+		if(arguments.length == 1)
+			return String.appendString(this.toString(), separator);
+
+		return String.appendString(this.toString(), separator, str);
+	};
+
+	// ============= Array extension functions =============
+
+	/** @module Array
+@description Array extension functions
+*/
+
+	function getFilterFunction(funct)
+	{
+		if(!funct) {
+			funct = e => !!e;
+		}
+		else if(angular.isString(funct) || angular.isArray(funct)) {
+			var field = funct;
+			funct = el => valueIfDefined(field, el);
+		}
+		return funct;
+	}
+
+	Array.some = function(arr, funct)
+	{
+		if(Array.isEmpty(arr)) return false;
+		funct = getFilterFunction(funct);
+		return arr.some(funct);
+	};
+
+	Array.every = function(arr, funct)
+	{
+		if(Array.isEmpty(arr)) return false;
+		funct = getFilterFunction(funct);
+		return arr.every(funct);
+	};
+
+	//check if all elements return function = false
+	Array.none = function(arr, funct) {
+		return !Array.some(arr, funct);
+	};
+
+	Array.find = function(arr, funct)
+	{
+		if(Array.isEmpty(arr)) return;
+
+		if(!Array.isArray(arr))
+			arr = Object.values(arr);
+
+		funct = getFilterFunction(funct);
+		return arr.find(funct);
+	};
+
+	Array.findIndex = function(arr, funct)
+	{
+		if(Array.isEmpty(arr)) return -1;
+
+		funct = getFilterFunction(funct);
+		return arr.findIndex(funct);
+	};
+
+	Array.filter = function(arr, funct)
+	{
+		if(Array.isEmpty(arr)) return [];
+
+		if(!Array.isArray(arr))
+			arr = Object.values(arr);
+
+		funct = getFilterFunction(funct);
+		return arr.filter(funct);
+	};
+
+	Array.count = function(arr, funct) {
+		return Array.isEmpty(arr) ? 0 : Array.filter(arr, funct).length;
+	};
+
+	//map array by function or field name
+	Array.map = function(arr, funct)
+	{
+		if(Array.isEmpty(arr)) return [];
+		if(!funct) return arr;
+
+		if(!Array.isArray(arr))
+			arr = Object.values(arr);
+
+		funct = getFilterFunction(funct);
+		return arr.map(funct);
+	};
+
+	Array.includes = function(arr, element)
+	{
+		return Array.isNotEmpty(arr) &amp;&amp; arr.includes(element);
+	};
+
+	Array.contains = function(arr, element, ignoreCase)
+	{
+		if(!angular.isArray(arr)) return false;
+
+		if(ignoreCase &amp;&amp; angular.isString(element))
+			element = element.toLowerCase();
+		if(ignoreCase)
+			arr = arr.map(str => angular.isString(str) ? str.toLowerCase() : str);
+
+		return arr.includes(element);
+	};
+
+	Array.prototype.contains = function(element, ignoreCase)
+	{
+		return Array.contains(this, element, ignoreCase);
+	};
+
+	String.in = Array.in = function(element, arr, ignoreCase)
+	{
+		return Array.contains(arr, element, ignoreCase);
+	};
+
+	String.prototype.in = function(arr, ignoreCase)
+	{
+		return Array.contains(arr, this.toString(), ignoreCase);
+	};
+
+	Array.remove = function(arr, element, field)
+	{
+		var index = Array.findBy(arr, element, field);
+		if(index != -1)
+			arr.splice(index, 1);
+		return arr;
+	};
+
+	Array.prototype.remove = function(element, field) {
+		return Array.remove(this, element, field);
+	};
+
+	Array.first = arr => arr &amp;&amp; arr[0];
+	Array.prototype.first = function () { return Array.first(this) };
+
+	Array.last = arr => arr &amp;&amp; arr[arr.length - 1];
+	Array.prototype.last = function () { return Array.last(this) };
+
+	Array.move = function(arr, element, to, field)
+	{
+		var index = Array.findBy(arr, element, field);
+		if(index == -1) return arr;
+
+		arr.splice(index, 1);
+		arr.splice(to, 0, element);
+		return arr;
+	};
+
+	Array.prototype.move = function(element, to, field) {
+		return Array.move(this, element, to, field);
+	};
+
+	//remove multiple elements from array
+	//! This diff function modifies the input array !
+	Array.removeMultiple = function(arr, elements, field)
+	{
+		if(Array.isEmpty(elements) || Array.isEmpty(arr))
+			return arr;
+
+		for(var i = 0; i &lt; elements.length; i++)
+		{
+			if(Array.isEmpty(arr))
+				return arr;
+			Array.remove(arr, elements[i], field);
+		}
+		return arr;
+	};
+
+	//diff function that does not modify input array
+	Array.diff = function(arr, elements, field)
+	{
+		var result = [];
+		for(var i = 0; i &lt; Array.getCount(arr); i++)
+		{
+			var index = Array.findBy(elements, arr[i], field);
+			if(index == -1)
+				result.push(arr[i]);
+		}
+		return result;
+	};
+
+	Array.prototype.diff = function(elements, field) {
+		return Array.diff(this, elements, field);
+	};
+
+	//remove all elements in an array, keeping the same instance
+	Array.clear = function(arr)
+	{
+		if(Array.isArray(arr) &amp;&amp; Array.isNotEmpty(arr))
+			arr.splice(0, arr.length);
+		return arr;
+	};
+
+	Array.prototype.clear = function() {
+		return Array.clear(this);
+	};
+
+	//return index of element where field = value
+	Array.findBy = function(arr, value, field)
+	{
+		if(Array.isEmpty(arr))
+			return -1;
+
+		var searchValue = value;
+		if(value &amp;&amp; value.hasOwnProperty(field))
+			value = value[field];
+		else if(value &amp;&amp; field)
+		{
+			var searchFieldValue = valueIfDefined(field, value);
+			if(!isMissing(searchFieldValue))
+				searchValue = searchFieldValue;
+		}
+
+		for(var i = 0; i &lt; arr.length; i++)
+		{
+			if(arr[i] === value)
+				return i;
+
+			var elementValue = valueIfDefined(field, arr[i]);
+			if(elementValue === value || elementValue === searchValue)
+				return i;
+		}
+
+		return -1;
+	};
+
+	Array.prototype.findBy = function(element, field) {
+		return Array.findBy(this, element, field);
+	};
+
+	Array.containsElement = function(arr, value, field) {
+		return Array.findBy(arr, value, field) != -1;
+	};
+
+	Array.prototype.containsElement = function(element, field) {
+		return Array.findBy(this, element, field) != -1;
+	};
+
+	Array.findElementBy = function(arr, value, field)
+	{
+		var index = Array.findBy(arr, value, field);
+		return index == -1 ? null : arr[index];
+	};
+
+	Array.prototype.findElementBy = function(element, field) {
+		return Array.findElementBy(this, element, field);
+	};
+
+	Array.prototype.shuffle = function()
+	{
+		var s = [];
+		while (this.length)
+		{
+			var randomElement = this.splice(Math.random() * this.length, 1)[0];
+			s.push(randomElement);
+		}
+		while (s.length)
+			this.push(s.pop());
+		return this;
+	};
+
+	Array.prototype.reverse = function()
+	{
+		var s = [];
+		while (this.length)
+			s.push(this.splice(0, 1)[0]);
+		while (s.length)
+			this.push(s.pop());
+		return this;
+	};
+
+	//divide into pages with fixed number. nb = max number per page
+	Array.prototype.paginate = function(nb, equalize, minPages)
+	{
+		if(isEmpty(this))
+			return [];
+		minPages = valueOrDefault(minPages, 1);
+		var nbPages = Math.ceil(this.length / nb);
+		if(isMissing(nb) || nb &lt;= 1 || nb > this.length || nbPages &lt; minPages)
+			return [this];
+
+		var result = [];
+		var remaining = this.length;
+		var start = 0;
+
+		for(var i = 0; i &lt; nbPages; i++)
+		{
+			if(equalize)
+				nb = Math.ceil(remaining / (nbPages - i));
+			result.push(this.slice(start, start + nb));
+			start += nb;
+			remaining -= nb;
+		}
+		return result;
+	};
+
+	//divide array into N slices
+	//take every Nth element
+	Array.prototype.divideInto = function(nb, transpose)
+	{
+	//divide in 1 or more than length = same array
+		if(!this.length)
+			return [];
+		if(nb &lt;= 1)
+			return [this];
+		nb = Math.floor(nb);
+		if(nb > this.length)
+			nb = this.length;
+		var result = [];
+		var i = 0;
+		if(transpose)
+		{
+			var remainingElements = this;
+			for(i = 0; i &lt; nb; i++)
+			{
+				var perCol = remainingElements.length / (nb - i);
+				perCol = (i + 1 &lt;= nb / 2) ? Math.ceil(perCol) : Math.floor(perCol);
+				result[i] = remainingElements.slice(0, perCol);
+				remainingElements = remainingElements.slice(perCol);
+			}
+		}
+		else
+		{
+			for(i = 0; i &lt; nb; i++)
+				result.push([]);
+			for(i = 0; i &lt; this.length ; i++)
+				result[i % nb].push(this[i]);
+		//result[nb - 1].push(this[i]);
+		}
+		return result;
+	};
+
+	Array.generate = function(size, func)
+	{
+		var arr = [];
+		for (var k = 0; k &lt; size; k++)
+			if(angular.isFunction(func))
+				arr.push(func(k));
+			else
+				arr.push(k);
+		return arr;
+	};
+
+	//repeat current array N times
+	Array.repeat = function(arr, times)
+	{
+		var result = [];
+		if(Array.isEmpty(arr) || !times) return result;
+		for(var i = 0; i &lt; times; i++)
+			result = result.concat(arr);
+
+		return result;
+	};
+
+	Array.prototype.repeat = function(times) {
+		return Array.repeat(this, times);
+	};
+
+	//push multiple elements to end of current array
+	Array.prototype.pushAll = function(arr)
+	{
+		if(Array.isEmpty(arr))
+			return this;
+
+		if(!angular.isArray(arr))
+			this.push(arr);
+		else
+			for(var i = 0; i &lt; arr.length; i++)
+				this.push(arr[i]);
+
+		return this;
+	};
+
+	//push multiple elements to start of current array
+	Array.prototype.unshiftAll = function(arr)
+	{
+		if(Array.isEmpty(arr))
+			return this;
+
+		if(!angular.isArray(arr))
+			this.push(arr);
+		else
+			for(var i = arr.length - 1; i >= 0; i--)
+				this.unshift(arr[i]);
+
+		return this;
+	};
+
+	//TODO add insert / insertAll(arr, position, element)
+	//productTestResults.columns.splice(4, 0, ProductTestService.data.addedColumns[0])
+
+	Array.prototype.insert = function(pos, element)
+	{
+		return this.splice(pos, 0, element);
+	};
+
+	Array.prototype.insertAll = function(pos, arr)
+	{
+		if(Array.isEmpty(arr))
+			return this;
+
+		for(var i = arr.length - 1; i >= 0; i--)
+			this.splice(pos, 0, arr[i]);
+		return this;
+	};
+
+	// value for filter, sort or group
+	Array.prototype.getElementValue = function(i, field)
+	{
+		return Object.getFieldValue(this[i], field, i);
+	};
+
+	Object.getFieldValue = function(obj, field, index)
+	{
+		//if object.method name exists: call object.method()
+		if(angular.isObject(obj) &amp;&amp; angular.isFunction(obj[field])) return obj[field]();
+		//call function(object)
+		if(angular.isFunction(field)) return field(obj, index);
+		//return object.field
+		if(angular.isObject(obj)) return valueIfDefined(field, obj);
+		//or return object if no field or function
+		return obj;
+	};
+
+	//get array of distinct values on a field or function of the elements
+	//and count for each value
+	Array.countBy = function(arr, field, skipNull)
+	{
+		var result = {};
+		if(Array.isEmpty(arr)) return result;
+		arr = Object.values(arr);
+
+		for(let i = 0; i &lt; arr.length; i++)
+		{
+			let value = arr.getElementValue(i, field);
+			if(isMissing(value) &amp;&amp; skipNull) continue;
+			if(isMissing(value)) value = 0;
+			if(!result[value])
+				result[value] = 1;
+			else
+				result[value]++;
+		}
+		return result;
+	};
+
+	Array.prototype.countBy = function(field, skipNull) {
+		return Array.countBy(this, field, skipNull);
+	};
+
+	Array.distinct = function(arr, field, skipNull)
+	{
+		if(Array.isEmpty(arr)) return [];
+
+		var distinctCount = Array.countBy(arr, field, skipNull);
+		return Object.keys(distinctCount);
+	};
+
+	Array.prototype.distinct = function(field, skipNull) {
+		return Array.distinct(this, field, skipNull);
+	};
+
+	//divide array into N slices
+	//depending on distinct values for a field or function of the elements
+	Array.groupBy = function(arr, field)
+	{
+		var result = {};
+		if(Array.isEmpty(arr)) return result;
+
+		arr = Object.values(arr);
+		for(let i = 0; i &lt; arr.length; i++)
+		{
+			var value = arr.getElementValue(i, field);
+			if(isMissing(value)) value = 0;
+			if(!result[value])
+				result[value] = [];
+			result[value].push(arr[i]);
+		}
+		return result;
+	};
+
+	Array.prototype.groupBy = function(field) {
+		return Array.groupBy(this, field);
+	};
+
+	Array.sum = function(arr, field)
+	{
+		if(Array.isEmpty(arr)) return null;
+
+		var sum = null;
+		arr = Object.values(arr);
+
+		for(let i = 0; i &lt; arr.length; i++)
+		{
+			let value = valueIfDefined(field, arr[i]);
+			if(isNaN(value)) continue;
+
+			if(!sum)
+				sum = value;
+			else
+				sum += value;
+		}
+		return sum;
+	};
+
+	Array.prototype.sum = function(field) {
+		return Array.sum(this, field);
+	};
+
+	//make an object using 1 array for keys and 1 for values
+	//if no keys supplied: turn values into keys
+	Array.toMap = function(arr, keys)
+	{
+		var map = {};
+		if(Array.isEmpty(arr)) return map;
+		arr = Object.values(arr);
+
+		if(!keys) keys = arr;
+		var len = Math.min(keys.length, arr.length);
+		for(var i = 0; i &lt; len; i++)
+			map[keys[i]] = arr[i];
+		return map;
+	};
+
+	Array.prototype.toMap = function(keys) {
+		return Array.toMap(this, keys);
+	};
+
+	Array.toObject = function(arr, keyField, valueField)
+	{
+		if(!arr) return arr;
+		var map = {};
+		arr = Object.values(arr);
+
+		for(var i = 0; i &lt; arr.length; i++)
+		{
+			var key = arr[i][keyField];
+			if(!key) continue;
+			var value = valueField ? arr[i][valueField] : arr[i];
+			map[key] = value;
+		}
+		return map;
+	};
+
+	Array.prototype.toObject = function(keyField, valueField) {
+		return Array.toObject(this, keyField, valueField);
+	};
+
+	//add keys to array of objects by value of field
+	Array.indexBy = function(arr, field, modify)
+	{
+		if(Array.isEmpty(arr)) return {};
+
+		var obj = {};
+		arr = Object.values(arr);
+
+		for(var i = 0; i &lt; arr.length; i++)
+		{
+			var key = arr.getElementValue(i, field);
+			if(!isMissing(key) &amp;&amp; !obj.hasOwnProperty(key))
+				obj[key] = arr[i];
+		}
+
+		if(!modify)
+			return obj;
+
+		if(!arr.by) arr.by = {};
+		if(field)   arr.by[field] = obj;
+
+		return obj;
+	};
+
+	Array.prototype.indexBy = function(field, modify) {
+		return Array.indexBy(this, field, modify);
+	};
+
+	Array.dedupBy = function(arr, field) {
+		return Object.values(Array.indexBy(arr, field));
+	};
+
+	Array.prototype.dedupBy = function(field) {
+		return Array.dedupBy(this, field);
+	};
+
+	Array.intersect = function (arr1, arr2, keyField)
+	{
+		if(Array.isEmpty(arr1) || Array.isEmpty(arr2)) return arr1;
+
+		//ensure arr1 shorter than arr2
+		if(arr1.length &lt; arr2.length)
+		{
+			var swap = arr1;
+			arr1 = arr2;
+			arr2 = swap;
+		}
+
+		var map = arr2.indexBy(keyField);
+		return arr1.filter(el => el[keyField] in map || el in map);
+	};
+
+	Array.prototype.intersect = function (arr2, keyField) {
+		return Array.intersect(this, arr2, keyField);
+	};
+
+	//ARRAY SORT FUNCTIONS
+	function compareElements(a, b, reverse, caseSensitive)
+	{
+		if(angular.isObject(a)) a = Object.getFirstValue(a);
+		if(angular.isObject(b)) b = Object.getFirstValue(b);
+
+		if(String.isEmpty(a)) a = "";
+		else if(!caseSensitive &amp;&amp; angular.isString(a)) a = a.toUpperCase();
+
+		if(String.isEmpty(b)) b = "";
+		else if(!caseSensitive &amp;&amp; angular.isString(b)) b = b.toUpperCase();
+
+		var rev = reverse ? -1 : 1;
+		if(a > b) return rev;
+		if(a &lt; b) return -rev;
+		return 0;
+	}
+	Array.compareElements = compareElements;
+
+	function getSortValue(element, sortField) {
+		if(!sortField)                                        return element;
+		if(angular.isFunction(sortField))                     return sortField(element);
+		if(element &amp;&amp; angular.isFunction(element[sortField])) return element[sortField]();
+		return valueOrDefault(valueIfDefined(sortField, element), "");
+	}
+
+	//sort object array by a field
+	//compare:  custom comparison function(a, b, reverse), or true : case-sensitive compare, false, undefined : case-insensitive compare
+	Array.sortObjectsBy = function(arr, sortField, reverse, compare)
+	{
+		if(!angular.isArray(arr)) return arr;
+		if(angular.isFunction(compare))
+			arr.sort( (a, b) => compare(a, b, reverse) );
+		else
+			arr.sort( (a, b) => compareElements(getSortValue(a, sortField), getSortValue(b, sortField), reverse, compare) );
+		return arr;
+	};
+
+	Array.prototype.sortObjectsBy = function(sortField, reverse, compare)
+	{
+		return Array.sortObjectsBy(this, sortField, reverse, compare);
+	};
+
+	//sort string array, case insensitive by default
+	Array.sortStrings = function(arr, reverse, caseSensitive)
+	{
+		arr.sort(function(a, b)
+		{
+			return compareElements(a, b, reverse, caseSensitive);
+		});
+		return arr;
+	};
+
+	Array.prototype.sortStrings = function(reverse, caseSensitive)
+	{
+		return Array.sortStrings(this, reverse, caseSensitive);
+	};
+
+	//convert Array of Objects to CSV format string
+	Array.toCsv = function(data, columns, separator)
+	{
+		if(Array.isEmpty(data))
+			return "";
+
+		if(!separator)
+			separator = "\t";
+
+		if(angular.isString(columns))
+			columns = String.split(columns, /[,;]/, true, true);
+
+		var headers = Array.isNotEmpty(columns);
+		//get all possible columns from every row in order they appear
+		if(Array.isEmpty(columns) || !Array.isArray(columns))
+			columns = data.distinct(Object.keys).join(",").split(",").distinct();
+
+		var rows = data.map(row => columns.map(col => {
+			var value = valueOrDefault(valueIfDefined(col, row), "");
+			return Array.isArray(value) ? value.length : value;
+		}).join(separator) );
+
+		if(headers)
+			rows.unshift(columns.join(separator));
+		rows.push("");
+		return rows.join("\n");
+	};
+
+	Array.prototype.toCsv = function(columns, separator) {
+		return Array.toCsv(this, columns, separator);
+	};
+
+	//convert CSV format string to Array of Arrays / Array of Objects
+	//default column separator: TAB
+	//columns:
+	// String[] : use field names for columns.  return Array of Objects
+	// if true: take 1st row of csvData as header field list
+	// if false/undefined : do not use headers. return Array of Arrays
+	Array.fromCsv = function(csvData, columns, separator)
+	{
+		if(Array.isEmpty(csvData))
+			return [];
+
+		if(!separator)
+			separator = "\t";
+
+		var rows = String.split(csvData, /\n|\r/, true, true);
+		rows = rows.map(row => row.trimEnd().split(separator));
+
+		if(columns === true)
+			columns = rows.shift(); //use first row as column headers
+		else if(angular.isString(columns))
+			columns = String.split(columns, /[,;]/, false, true);
+		if(Array.isNotEmpty(columns))
+			rows = rows.map(row => Array.combine(row, columns, true) );
+
+		return rows;
+	};
+
+	//similar to PHP function array_combine —
+	//Creates an Object by using one array for keys and another for its values
+	Array.combine = function(arr, fields, skipEmpty)
+	{
+		var obj = {};
+		var nb = Math.min( Array.getLength(arr), Array.getLength(fields) );
+		for(var i = 0; i &lt; nb; i++)
+			if(!skipEmpty || String.isNotEmpty(arr[i]))
+				obj[fields[i]] = arr[i];
+		return obj;
+	};
+
+	//--- OBJECT EXTENSION FUNCTIONS
+
+	// Function to merge all of the properties from one object into another
+	//addNew: if false, only copy o2 properties that already exist in o1
+	//includeFunctions: if true, copy o2 functions to o1
+
+	//difference by keys
+	Object.keyDiff = function (o1, o2)
+	{
+		if(!o2) return o1;
+		var result = {};
+		for(var key in o1)
+		{
+			if(o1.hasOwnProperty(key) &amp;&amp; !o2.hasOwnProperty(key))
+				result[key] = o1[key];
+		}
+		return result;
+	};
+
+	//intersection by keys
+	Object.keyIntersect = function (o1, o2)
+	{
+		if(!o2) return o1;
+		var result = {};
+		for(var key in o1)
+		{
+			if(o1.hasOwnProperty(key) &amp;&amp; o2.hasOwnProperty(key))
+				result[key] = o1[key];
+		}
+		return result;
+	};
+
+	Object.forEach = function (obj, funct)
+	{
+		if(angular.isArray(obj))   return obj.forEach(funct);
+		if(!angular.isObject(obj)) return funct(obj);
+
+		for(var key in obj) {
+			if(obj.hasOwnProperty(key))
+				funct(obj[key], key);
+		}
+		return obj;
+	};
+
+	//like Array.map function
+	Object.map = function (obj, funct)
+	{
+		if(angular.isArray(obj))   return obj.map(funct);
+		if(!angular.isObject(obj)) return funct(obj);
+
+		var result = {};
+		for(var key in obj) {
+			if(obj.hasOwnProperty(key))
+				result[key] = funct(obj[key], key);
+		}
+		return result;
+	};
+
+	//TODO add browser info function
+	Object.toText = function (obj, separator, includeFunctions)
+	{
+		if(!angular.isObject(obj)) return obj;
+
+		var msg = "";
+		for(var k in obj)
+		{
+			if(angular.isFunction(obj[k]) &amp;&amp; !includeFunctions) continue;
+			msg += separator + k + ": " +  Object.toText(obj[k], separator);
+		}
+		return isEmpty(msg) ? obj : msg;
+	};
+
+	Object.toQueryString = function(obj)
+	{
+		if(!obj) return "";
+		if(angular.isString(obj)) return obj;
+		var result = "";
+		var sep = "";
+		for(var p in obj)
+		{
+			if(isEmpty(obj[p]) || angular.isFunction(obj[p])) continue;
+			result += sep + p + "=" + obj[p];
+			sep = "&amp;";
+		}
+		return result;
+	};
+
+	//get Nth element of array or object
+	Object.getNth = function(obj, key)
+	{
+		if(!isMissing(obj[key]))
+			return obj[key];
+		var keys = Object.keys(obj);
+		key = keys[key];
+		if(!isMissing(key))
+			return obj[key];
+	};
+
+	//get value of 1st field in object
+	//obj: input object
+	//recursive: if true, get first non-object value in sub-objects
+	Object.getFirstValue = function(obj, recursive)
+	{
+		if(!angular.isObject(obj))
+			return obj;
+
+		var result;
+		for(var key in obj)
+		{
+			if(key &amp;&amp; !isMissing(obj[key]))
+			{
+				result = obj[key];
+				break;
+			}
+		}
+
+		if(recursive &amp;&amp; angular.isObject(result))
+			result = Object.getFirstValue(result, recursive);
+		return result;
+	};
+
+	//return array of property values from object
+	Object.values = function (obj, skipNull)
+	{
+		var vals = [];
+		if(!obj) return vals;
+		//if array, return obj
+		if(Array.isArray(obj)) return obj;
+
+		//if not object, return [obj]
+		if(!isObjectNotArray(obj)) return [ obj ];
+
+		for(var key in obj)
+			if (obj.hasOwnProperty(key) &amp;&amp; (!isMissing(obj[key]) || !skipNull))
+				vals.push(obj[key]);
+		return vals;
+	};
+
+	//return first key
+	Object.hasKeys = function (obj)
+	{
+		if(!obj) return false;
+		for(var key in obj)
+			if (key &amp;&amp; obj.hasOwnProperty(key))
+				return true;
+		return false;
+	};
+
+	Object.toArray = function(obj, skipNull)
+	{
+		var vals = [];
+		if(!obj) return vals;
+		//if array, return obj
+		if(angular.isArray(obj)) return obj;
+		if(!angular.isObject(obj)) return [obj];
+		//TODO if not object, return [obj]
+		for(var key in obj)
+			if (obj.hasOwnProperty(key) &amp;&amp; (!isMissing(obj[key]) || !skipNull))
+			{
+				var value = obj[key];
+				var element = {key: key};
+				if(isObjectNotArray(value))
+					angular.merge(element, obj[key], true);
+				else
+					element.value = value;
+				vals.push(element);
+			}
+		return vals;
+	};
+
+	//return only certain fields of object. does not modify input obj
+	Object.filter = function(obj, filterFunction)
+	{
+		if(!obj || !angular.isObject(obj)) return obj;
+
+		var result = {};
+		angular.forEach(obj, function(val, key)
+		{
+			if(filterFunction(val, key))
+				result[key] = val;
+		});
+		return result;
+	};
+
+	//return only data fields of object (not functions). does not modify input obj
+	Object.getData = function(obj, skipNull, skip$)
+	{
+		return Object.filter(obj, (val, key) => !angular.isFunction(val) &amp;&amp; (!skipNull || !isMissing(val)) &amp;&amp; (!skip$ || key[0] != "$")  );
+	};
+
+	//sort keys of an Object
+	Object.sortKeys = function(obj, recursive, modify, reverse, caseSensitive)
+	{
+		if(!obj) return obj;
+
+		var keys = Object.keys(obj);
+		keys = Array.sortStrings(keys, reverse, caseSensitive);
+		var result = modify ? obj : {};
+		//remove and set each object field in sorted key order
+		keys.forEach(function(key)
+		{
+			var val = obj[key];
+			if(modify)
+				delete result[key];
+
+			if(recursive &amp;&amp; isObjectNotArray(val))
+				result[key] = Object.sortKeys(val, recursive - 1, modify, reverse, caseSensitive);
+			else
+				result[key] = val;
+		});
+
+		return result;
+	};
+
+	// Object.flip = like PHP array_flip { keys: values } => { values: keys }
+	Object.flip = function(obj)
+	{
+		if(!obj) return obj;
+		var result = {};
+		for(var key in obj)
+			if(key &amp;&amp; obj.hasOwnProperty(key))
+				result[obj[key]] = key;
+
+		return result;
+	};
+
+	//convert from JSON. if invalid Json, keep input value
+	Object.fromJson = function(value)
+	{
+		try {
+			value = angular.fromJson(value);
+		}
+		catch(ex) {
+		//console.log("invalid JSON:", value);
+		}
+		return value;
+	};
+
+	const charEntityMap   = { "&lt;": "gt", ">": "lt", "&amp;": "amp", '"': "quot", "'": "apos" };
+	const charEntityRegex = new RegExp("[" + Object.keys(charEntityMap).join("") + "]", "g");
+	const entityCharMap   = Object.flip(charEntityMap);
+	const entityCharRegex = new RegExp(Object.keys(entityCharMap).map(en => "&amp;" + en + ";").join("|"), "g");
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/editDialog/editDialog.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/editDialog/editDialog.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/editDialog
+
+@description Displays a modal dialog box or popup panel that can contain: messages, buttons, editable fields,
+using a model object and different field types (field properties are like table columns).
+&lt;center>
+	&lt;img src="https://user-images.githubusercontent.com/21251436/37168337-6659192a-22b9-11e8-82bd-326240295c8d.png"/>
+&lt;/center>
+
+@param variable         {optional|String}         @ global variable name for this component controller instance
+@param visible          {Boolean}                 = controls visibility of the dialog/popup. true: open / default: closed
+
+@param dialogTitle      {optional|String}         @ dialog header main title
+@param dialogSubtitle   {optional|String}         = dialog header sub title
+@param message          {optional|String}         @ text message to display in dialog content
+@param content          {optional|String|jQuery}  @ jquery selector of page elements to move inside dialog content.
+@param footerText       {optional|String}         = text variable to display on the left of dialog footer
+@param readOnly         {optional|Boolean}        = make all dialog form fields read-only
+@param size             {optional|String}         @ default: medium | large | small
+@param position         {optional|String}         @ (popup-panel only)  top, bottom, left, right | header | footer | sidebar&lt;br/>Some can be combined like: top left, bottom right, left sidebar
+
+@param model            {optional|Object}         = object to display/edit
+@param fields           {optional|Object[]}      =? list of fields of the model to display/edit with their properties
+@param fieldNames       {optional|String[]}       @ field names of the model to display (converted to fields, for read-only dialog)
+@param columns          {optional|Number}        =? Number of columns for the form in this dialog
+
+@param actions          {object[]}                = list of buttons displayed on right of the dialog footer.&lt;br/>Each action button can have theses properties:&lt;br/>text, title, click function, close, disable, show, showLoader, link | href
+@param cancelButton     {optional|String}         @ default: empty: no Cancel button | text of cancel button ("No", "Close" , "Cancel", ...).&lt;br/>The Cancel button always does same action as the X close icon&lt;br/>(closes the dialog and calls the same onClose function if specified).
+@param confirmButton    {optional|String}         @ default: empty: no Confirm button | text of cancel button ("Yes" , "OK", "Do it!" ...).&lt;br/>The Confirm button always closes the dialog and calls onConfirm then onClose functions if specified.
+@param onConfirm        {optional|function}       = function executed when the Confirm button si clicked
+@param onOpen           {optional|function}       = function executed when the dialog/popup opens
+@param onClose          {optional|function}       = function executed when the dialog/popup closes
+@param redirect         {optional|String}         = redirect after closing
+
+@example Simple confirmation dialog (modal, centered) with 1 cancel button and 1 confirm button (OK)
+//clicking on any of the buttons closes the dialog
+
+&lt;edit-dialog visible="vm.showDeleteDialog" size="medium"
+dialog-title="Delete Container Template" dialog-subtitle="vm.formToDelete.Name"
+message="Are you sure you want to delete this Container Template ?"
+cancel-button="Cancel" on-close="vm.cancelDeleteForm"
+confirm-button="OK"    on-confirm="vm.deleteForm">
+&lt;/edit-dialog>
+
+@example Modal dialog (modal, centered)
+//Display and edit object vm.pdfDocument with list of fields defined in vm.pdfDialog.fields
+//Shows Cancel and Save button spinning while converting.
+
+//JS page controller
+vm.pdfDialog = {
+	visible: false,
+	fields: [
+		{field: "name",           type: "text", label: "Document Name", required: true },
+		{field: "category",       type: "picklist", label: "Category",  required: true, options: categoryOptions },
+		{field: "expirationDate", type: "date", label: "Expiration Date", min: "tomorrow" }
+	],
+	actions: [
+		{ text: "Save", click: vm.convertToPDF, close: false, showLoader: function() { return vm.converting; } }
+	];
+};
+
+//HTML
+&lt;edit-dialog variable="pdfSaveDialog" visible="vm.pdfDialog.visible"
+dialog-title="Document Information" dialog-subtitle="'Save Form as PDF in Document Library'"
+actions="vm.pdfDialog.actions" cancel-button="Cancel"
+model="vm.pdfDocument" fields="vm.pdfDialog.fields">&lt;/edit-dialog>
+OR
+&lt;modal-dialog variable="pdfSaveDialog" visible="vm.pdfDialog.visible"
+dialog-title="Document Information" dialog-subtitle="'Save Form as PDF in Document Library'"
+actions="vm.pdfDialog.actions" cancel-button="Cancel"
+model="vm.pdfDocument" fields="vm.pdfDialog.fields">&lt;/modal-dialog>
+
+@example
+//Popup panel at footer of the page (non modal, can be positioned at top, bottom, left or right)
+
+&lt;popup-panel variable="pdfSaveDialog" visible="vm.pdfDialog.visible"
+dialog-title="Document Information"
+dialog-subtitle="'Save Form as PDF in Document Library'" position="footer"
+actions="vm.pdfDialog.actions" cancel-button="Cancel"
+model="vm.pdfDocument" fields="vm.pdfDialog.fields">&lt;/popup-panel>
+*/
+
+module.exports = function (ngModule)
+{
+	var dialogComponent = {
+		bindings: {
+			model: '=',
+			visible: '=',
+			fields: '=?',
+			fieldNames: '@',
+			columns: '=?',
+			cancelButton: '@',
+			confirmButton: '@',
+			steps: '=?',
+			currentStep: '=?',
+			actions: '=',
+			onOpen: '=',
+			onClose: '=',
+			onConfirm: '=',
+			redirect: '=',
+			variable: '@',
+			dialogTitle: '@',
+			dialogSubtitle: '=',
+			footerText: '=',
+			content: '@',
+			message: '@',
+			readOnly: '=',
+			size: '@',
+			position: '@' // pass classes : top right, footer
+		},
+		template: require('./editDialog.html'),
+		controllerAs: 'vm',
+		transclude: true,
+		controller: DialogController
+	};
+
+	ngModule.component('editDialog',  dialogComponent);
+	ngModule.component('modalDialog', dialogComponent);
+	ngModule.component('popupPanel',  dialogComponent);
+
+	DialogController.$inject = ['$scope', '$element', '$timeout', 'CommonUtils', 'NavigationService'];
+	function DialogController  ( $scope,   $element,   $timeout,   CommonUtils,   NavigationService )
+	{
+		var vm = this;
+		CommonUtils.setVar(vm.variable, vm);
+
+		vm.$onInit = function()
+		{
+			//if(!vm.size) vm.size="medium";
+			vm.hasInnerHtml = $element.find('div[ng-transclude] *').length;
+			vm.tagName = $element[0].tagName.toLowerCase();
+			vm.isModal = vm.tagName != "popup-panel";
+
+			vm.initClasses();
+			vm.setContent();
+		};
+
+		vm.initClasses = function()
+		{
+			vm.classes = {};
+			if(vm.isModal)
+				vm.classes['slds-modal slds-fade-in-open'] = true;
+			else
+				vm.classes['popup-panel'] = true;
+
+			if(vm.position)
+				vm.classes[vm.position] = true;
+
+			if(vm.size)
+				vm.classes['slds-modal--' + vm.size] = true;
+
+			return vm.classes;
+		};
+
+		//put external html element in dialog content
+		vm.setContent = function(selector)
+		{
+			if(!selector) selector = vm.content;
+			if(!selector) return;
+			$timeout(function() {
+				vm.dialogContent = $element.find(".panel-content");
+				vm.contentElement = angular.element(selector);
+				vm.dialogContent.append(vm.contentElement);
+				console.log(vm.variable || vm.tagName, "setContent", vm.contentElement[0]);
+			}, 0);
+		};
+
+		//call on-open function automatically every time the dialog opens
+		if(angular.isFunction(vm.onOpen))
+			$scope.$watch('vm.visible', function(newVal, oldVal)
+			{
+				console.log(vm.variable || vm.tagName, newVal ? "opening" : "closing");
+				if(newVal &amp;&amp; !oldVal)
+					vm.onOpen();
+			});
+
+		//call on-close function automatically every time the dialog closes
+		vm.close = function()
+		{
+			console.log(vm.variable || vm.tagName, "close");
+			vm.visible = false;
+			if(angular.isFunction(vm.onClose))
+				vm.onClose();
+
+			if(String.isNotEmpty(vm.redirect))
+				NavigationService.goToObject(vm.redirect);
+		};
+
+		//action button functions
+		vm.doAction = function(action)
+		{
+			//console.log("editDialog", "doAction", action.text);
+			if(action.click) action.click(vm.model);
+			if(action.close) vm.visible = false;
+		};
+
+		//display button text. can be constant or a function
+		vm.getButtonText = function(action) {
+			return CommonUtils.getPropertyValue(action, "text");
+		};
+
+		//button link url. can be constant or a function
+		vm.getButtonLink = function(action) {
+			return CommonUtils.getPropertyValue(action, "href") || CommonUtils.getPropertyValue(action, "link");
+		};
+
+		vm.getButtonDownloadAttr = function(action) {
+			return CommonUtils.getPropertyValue(action, "download");
+		};
+
+		vm.showButton = function(action) {
+			return CommonUtils.isMissing(action.show) || CommonUtils.getPropertyValue(action, "show") || false;
+		};
+
+		vm.disableButton = function(action)
+		{
+			return CommonUtils.getPropertyValue(action, "disabled")
+				|| CommonUtils.getPropertyValue(action, "disable")
+				|| CommonUtils.getPropertyValue(action, "showLoader")
+				|| false;
+		};
+
+		vm.showLoader = function(action)
+		{
+			return CommonUtils.getPropertyValue(action, "showLoader") || false;
+		};
+	}
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: library/app/states/addDocument/addDocument.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: library/app/states/addDocument/addDocument.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module library/components/addDocument
+@description This is the addDocument component used in the Document Library page.
+*/
+
+module.exports = function(ngModule){
+	ngModule.controller("AddDocumentController", AddDocumentController);
+	AddDocumentController.$inject = ['$scope', '$window', '$element', '$state', '$timeout', 'CommonUtils', 'NavigationService', 'RemoteActionService', 'FileUploadService', 'ContentDocumentService', 'ToastService'];
+	function AddDocumentController  ( $scope,   $window,   $element,   $state,   $timeout,   CommonUtils,   NavigationService,   RemoteActionService,   FileUploadService,   ContentDocumentService,   ToastService)
+	{
+		var lib = this;
+		window.addDocument = this;
+		const MAX_FILES_PER_CALL = 10;
+
+		lib.init = function()
+		{
+			lib.namespace = CommonUtils.getNamespacePrefix();
+
+			//create from template setup
+			lib.labels = window.labels || {};
+			lib.categoryOptions = CommonUtils.translateOptions(window.fileUploadSettings.categories, lib.labels.category);
+
+			//temp list in case of cancellation
+			lib.containerIdsToDelete = [];
+			lib.editing = false;
+			lib.avoidValidation = true;
+			lib.data = FileUploadService.data;
+			lib.data.uploading = false;
+			lib.templateCreation = false;
+			lib.selectedtemplate = '';
+			lib.pendingDoc = null;
+
+			initTable();
+			initFileUpload();
+			$element.ready(assignEventListeners);
+			lib.loadContainerTemplates();
+		};
+
+		lib.loadContainerTemplates = function()
+		{
+			return RemoteActionService.call("loadContainerTemplates", [], function(result) {
+				if(Array.isEmpty(result)) return lib.containerTemplates = [];
+
+				lib.containerTemplates = CommonUtils.sobjectToCamelCase(result);
+				lib.containerTemplates.byType = Array.groupBy(lib.containerTemplates, "type");
+			}, lib);
+		};
+
+		function assignEventListeners()
+		{
+			const el = $element[0];
+
+			//multiple upload events
+			const mutipleDropzoneElement  = el.querySelector('#multiple-dropzone-target');
+			const multipleFileInputElement = el.querySelector('#multiple-file-input');
+
+			mutipleDropzoneElement.addEventListener('dragover', FileUploadService.processDragoverDropzoneEvent);
+
+			mutipleDropzoneElement.addEventListener('drop', function(event)
+			{
+				//run validation
+				var msg = "";
+
+				if(event.dataTransfer.files.length > MAX_FILES_PER_CALL)
+				{
+					event.preventDefault();
+					msg = String.format("{0} {1} {2}", lib.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, lib.labels.documentLibrary.documentsAtATime);
+				}
+				else if(lib.filesReadyToUpload)
+				{
+					var fileCount = Array.filter(lib.filesReadyToUpload, file => file.Type != 'Form').length;
+
+					if(fileCount >= MAX_FILES_PER_CALL) {
+						event.preventDefault();
+						msg = String.format("{0} {1} {2}", lib.labels.documentLibrary.youHave, MAX_FILES_PER_CALL, lib.labels.documentLibrary.readyToUpload);
+					}
+					else if(event.dataTransfer.files.length + fileCount > MAX_FILES_PER_CALL) {
+						event.preventDefault();
+						msg = String.format("{0} {1} {2}", lib.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, lib.labels.documentLibrary.documentsAtATime);
+					}
+				}
+
+				if(msg) {
+					ToastService.toast(msg, "error", 3000);
+					scope.$apply();
+					return;
+				}
+
+				lib.processInputFileEvent(...arguments);
+			});
+
+			multipleFileInputElement.addEventListener('change', function()
+			{
+				//run validation
+				var msg = "";
+
+				if(this.files.length > MAX_FILES_PER_CALL) {
+					msg = String.format("{0} {1} {2}", lib.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, lib.labels.documentLibrary.documentsAtATime);
+				}
+				else if(lib.filesReadyToUpload)
+				{
+					var fileCount = Array.filter(lib.filesReadyToUpload, file => file.Type != 'Form').length;
+					if(fileCount >= MAX_FILES_PER_CALL) {
+						msg = String.format("{0} {1} {2}", lib.labels.documentLibrary.youHave, MAX_FILES_PER_CALL, lib.labels.documentLibrary.readyToUpload);
+					}
+					else if(this.files.length + fileCount > MAX_FILES_PER_CALL) {
+						event.preventDefault();
+						msg = String.format("{0} {1} {2}", lib.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, lib.labels.documentLibrary.documentsAtATime);
+					}
+				}
+
+				if(msg) {
+					ToastService.toast(msg, "error", 3000);
+					scope.$apply();
+					return;
+				}
+
+				lib.processInputFileEvent(...arguments);
+			});
+		}
+
+		function initTable()
+		{
+			//header actions
+			lib.headerActions = [
+				{ text: lib.labels.documentLibrary.documentLibrary, title: lib.labels.documentLibrary.goToDocumentLibrary, click: lib.goToDocumentLibrary }
+			];
+
+			//file upload table setup
+			lib.table = {};
+			lib.table.model = [];
+			lib.table.columns = [
+				{ field: "Title", label: lib.labels.common.columnDocumentName, sortable: false, filterType: "string", click: lib.downloadDocument, classes: doc => doc &amp;&amp; doc.Type == "Form" ? "bold" : "bold non-clickable" },
+				{ field: "Category", label: lib.labels.common.columnCategory, sortable: false, filterType: "string", value: getCategoryLabel },
+				{ field: "Type", label: lib.labels.common.columnFilteTypeCategory, sortable: false, filterType: "string" },
+				{ field: "version", label: lib.labels.common.columnVersion, sortable: false, filterType: "number" },
+				{ field: "ExpirationDate", label: lib.labels.common.columnExpires, sortable: false, filterType: "date" },
+				{ field: "modified", label: lib.labels.common.columnModifiedDate, sortable: false, filterType: "date" },
+				{ field: "size", label: lib.labels.documentLibrary.columnFileSize, sortable: false, filterType: "string" }
+			];
+
+			lib.table.actions = [
+				{ text: lib.labels.common.edit, click: lib.editUploadedFile },
+				{ text: lib.labels.common.delete, click: lib.removeFromUploadList }
+			];
+
+			lib.table.resultsPerPage = 10;
+		};
+
+		function getCategoryLabel(doc)
+		{
+			if(!lib.labels.category) return doc.Category;
+			return lib.labels.category[doc.Category] || doc.Category;;
+		}
+		/**
+		* @module app/states/addDocument
+		* @description initializes the required parameters for the file upload components from FileUploadService
+		*
+		* @method
+		* @name initFileUpload
+		*
+		*/
+		function initFileUpload()
+		{
+			//file upload setup
+			lib.hidePendingDocuments = true;
+
+			$scope.$on('addPendingMetadataFile', (event, payload) => {
+				payload.file.modified = window.moment().format('M/D/YY');
+				lib.filesPendingMetaData.push(payload.file);
+				if(!lib.pendingDoc)
+					lib.pendingDoc = payload.file;
+				if(payload.last)
+					FileUploadService.showFileMetadataModal();
+				$scope.$apply();
+			});
+
+			//Bind service methods used by component
+			lib.processInputFileEvent = FileUploadService.processInputFileEvent;
+			lib.processInputFileClean = FileUploadService.processInputFileClean;
+			lib.filesPendingMetaData = FileUploadService.filesPendingMetaData = [];
+			lib.filesReadyToUpload = FileUploadService.filesReadyToUpload = [];
+
+			lib.metadataDialog = {
+				visible: false,
+				columns: 3,
+				fields: [
+					{ field: "Title",           type: "text",     label: lib.labels.common.columnDocumentName,   required: true, columns: 2, maxLength: 80 },
+					{ field: "Category",        type: "picklist", label: lib.labels.common.columnCategory,       required: true, options: lib.categoryOptions, placeholder: lib.labels.common.columnCategory },
+					{ field: "ExpirationDate",  type: "date",     label: lib.labels.common.columnExpirationDate, required: true, placeholder: lib.labels.common.placeholderPickADate,
+						modelFormat: "YYYY-MM-DD", min: "tomorrow"
+					},
+				],
+				actions: [
+					{ text: lib.labels.common.cancel, click: cancelMetaData, disabled: lib.uploading,      close: true },
+					{ text: lib.labels.common.save,   click: saveMetaData,   disabled: lib.savingMetadata, showLoader: lib.uploading }
+				]
+			};
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description function binded to the Title, to show the form or download the file depending on the type
+		*
+		* @param {d} - the index of the temp file to update metaData changes
+		* @method
+		* @name downloadDocument
+		*
+		*/
+		lib.downloadDocument = function(d)
+		{
+			if (d.Type == 'Form')
+				lib.openFormView(d.containerId, 'form');
+			else
+				NavigationService.downloadContentVersion(d.id); //the document has not been uploaded yet so it cannot be downloaded.
+		};
+
+		lib.getTemplateType = template => CommonUtils.getVar("Type__c", template, "");
+
+		/**
+		* @module app/states/addDocument
+		* @description open the selected form
+		*
+		* @param {containerId} - the Container Instance Id to open
+		* @param {tabName} - the tab to be displayed
+		* @method
+		* @name openFormView
+		*
+		*/
+		lib.openFormView = function(containerId, tabName) {
+			NavigationService.goToPage("FormView", {id: containerId, submit: "off", cancel: "on" }, tabName);
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description creates container instance from selected template
+		*
+		* @method
+		* @name createFromTemplate
+		*
+		*/
+		lib.createFromTemplate = function()
+		{
+			lib.templateCreation = true;
+			if(!lib.selectedTemplate) {
+				ToastService.toast(lib.labels.documentLibrary.pleaseSelectTemplate, "error", 3000);
+				return lib.templateCreation = false;
+			}
+
+			var template = lib.containerTemplates.find(t => t.id === lib.selectedTemplate);
+			RemoteActionService.callRemoteAction('createContainerInstance', [template.id, template.name], function(result)
+			{
+				lib.containerIdsToDelete.push(result);
+				lib.pendingDoc = {
+					containerId: result,
+					templateId: template.id,
+					Title: template.name,
+					Type: 'Form',
+					Category: template.type,
+					modified: window.moment().format('M/D/YY')
+				};
+
+				lib.filesPendingMetaData.push(lib.pendingDoc);
+				lib.data.currentMetaDataModelIndex = lib.filesPendingMetaData.length - 1;
+				lib.data.metaDataModalVisible = true;
+				lib.templateCreation = false;
+			});
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description delete the selected form/document
+		*
+		* @param {d} - the document to be deleted
+		* @method
+		* @name removeFromUploadList
+		*
+		*/
+		lib.removeFromUploadList =  function(d) {
+			//AP-489
+			lib.filesPendingMetaData = angular.copy(lib.filesReadyToUpload);
+			var $index = lib.filesPendingMetaData.findIndex( file => file.tableId === d.tableId);
+			if($index != -1){
+				FileUploadService.removeFromFilesReadyToUpload($index);
+				if(d.Type == 'Form'){
+					var deleteList = [];
+					deleteList.push(d.containerId);
+					RemoteActionService.callRemoteAction('deleteContainerInstanceList', [deleteList], function(result){});
+				}
+				lib.filesPendingMetaData = angular.copy(lib.filesReadyToUpload);
+				lib.table.model = angular.copy(lib.filesReadyToUpload);
+				//AP-575
+				FileUploadService.cancelMetaData();
+				lib.filesPendingMetaData = FileUploadService.filesPendingMetaData;
+			}
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description get the element index, and opens metadata modal to edit the selected form/document
+		*
+		* @param {d} - the document to be edited
+		* @method
+		* @name editUploadedFile
+		*
+		*/
+		lib.editUploadedFile = function(d){
+			lib.editing = true;
+			lib.pendingDoc = d;
+
+			var i = lib.filesReadyToUpload.findIndex(file => file.tableId === d.tableId);
+			lib.filesPendingMetaData = angular.copy(lib.filesReadyToUpload);
+			if(i == -1)  return;
+
+			lib.backup = { index: i, element: angular.copy(d) };
+			//existing file or new file
+			lib.data.currentMetaDataModelIndex = i;
+			lib.data.metaDataModalVisible = true;
+		};
+
+		/**
+		 * @module app/qFileUpload
+		 * @description Closes the metaData modal and clears the temp array
+		 *
+		 * @param {index} - the index of the temp file to update metaData changes
+		 * @method
+		 * @name saveMetaData
+		 */
+
+		function saveMetaData(file)
+		{
+			var index = lib.data.currentMetaDataModelIndex;
+			lib.validMetadata = false;
+			if(!file || !file.Title || !file.Category || !file.ExpirationDate) {
+				ToastService.toast(lib.labels.common.pleaseSelectRequiredFields, "error", 3000);
+				lib.templateCreation = false;
+				return;
+			}
+
+			lib.validMetadata = true;
+			lib.data.savingMetadata = true;
+			const fileNameLengthLimit = 99; // max length of pathOnClient (Name) is 100 chars
+			const rawFileName = file.Title;
+			file.Title = ContentDocumentService.getCorrectLengthFileName(rawFileName, fileNameLengthLimit);
+
+			if(file.Type == 'Form'){
+				file.PathOnClient = '/' + file.Title;
+			}
+			else
+			{
+				//Keep extension for the files names modified.
+				const fileExtension = '.' + file.PathOnClient.substringAfter('.', true);
+				const fileEnding = '.' + file.Title.substringAfter('.', true);
+				const completefileName = rawFileName + fileExtension;
+
+				if(fileEnding != fileExtension){
+					file.Title = ContentDocumentService.getCorrectLengthFileName(completefileName, fileNameLengthLimit);
+					file.PathOnClient = '/' + completefileName;
+				}else{
+					file.PathOnClient = '/' + file.Title;
+				}
+			}
+
+			var temp = angular.copy(file);
+			var wasEdited = false;
+			temp.version = 1;
+
+			if(!lib.editing){
+				temp.tableId = file.tableId = Math.random().toString(36).substring(7);
+				lib.filesReadyToUpload.push(temp);
+				lib.table.model = angular.copy(lib.filesReadyToUpload);
+				lib.data.currentMetaDataModelIndex++;
+				lib.pendingDoc = lib.filesPendingMetaData[lib.data.currentMetaDataModelIndex];
+			}
+			else{
+				lib.editing = false;
+				lib.table.model[index] = file;
+				lib.filesReadyToUpload[index] = file;
+				index = lib.filesPendingMetaData.length - 1;
+				wasEdited = true;
+			}
+
+			if(index == lib.filesPendingMetaData.length - 1)
+				lib.data.metaDataModalVisible = false;
+
+			lib.templateCreation = false;
+			lib.data.savingMetadata = false;
+			lib.selectedTemplate = '';
+
+			if(wasEdited){
+				FileUploadService.cancelMetaData();
+				lib.filesPendingMetaData = FileUploadService.filesPendingMetaData;
+			}
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description method used by metadata modal for cancel button, revert changes made on metadata modal
+		*
+		* @method
+		* @name cancelMetaData
+		*
+		*/
+		function cancelMetaData()
+		{
+			//CR-454 &amp; CR-449
+			if(lib.editing){
+				if(lib.filesReadyToUpload){
+					lib.filesReadyToUpload[lib.backup.index] = lib.backup.element;
+					lib.table.model = lib.filesReadyToUpload;
+				}
+				lib.editing = false;
+			}
+			else{
+				//delete documents created
+				lib.deleteContainerInstanceRedirect();
+				FileUploadService.cancelMetaData();
+			}
+
+			lib.data.currentMetaDataModelIndex = lib.filesReadyToUpload ? lib.filesPendingMetaData.length : 0;
+			lib.pendingDoc = null;
+
+			lib.data.metaDataModalVisible = false;
+			lib.data.mainModalVisible = true;
+			lib.templateCreation = false;
+			lib.selectedTemplate = '';
+		}
+
+		/**
+		* @module app/states/addDocument
+		* @description upload all the documents and instances
+		*
+		* @method
+		* @name uploadReadyFiles
+		*
+		*/
+		lib.uploadReadyFiles = function()
+		{
+			var containers = [];
+			lib.table.model =  angular.copy(lib.filesReadyToUpload);
+
+			//separate Forms from files to upload and cleanup the unused variables depending on type
+			//AP-560 IF lib.filesReadyToUpload has "Forms" delete them because they were already created.
+			var containers         = lib.filesReadyToUpload.filter(d => d.Type == 'Form');
+			FileUploadService.filesReadyToUpload = lib.filesReadyToUpload.filter(d => d.Type != 'Form');
+
+			angular.forEach(containers, function(doc) {
+				delete doc.FirstPublishLocationId;
+				delete doc.modified;
+				delete doc.PathOnClient;
+				delete doc.version;
+				delete doc.tableId;
+			});
+
+			angular.forEach(FileUploadService.filesReadyToUpload, function(doc) {
+				doc[lib.namespace + 'Category__c'] = doc.Category;
+				doc[lib.namespace + 'Expiration_Date__c'] = doc.ExpirationDate;
+				delete doc.Category;
+				delete doc.ExpirationDate;
+
+				delete doc.Type;
+				delete doc.size;
+				delete doc.modified;
+				delete doc.version;
+				delete doc.tableId;
+			});
+
+			var onUploadSuccess = function(result) {
+				var nbDocuments = Array.getLength(result) + Array.getLength(containers);
+				if(nbDocuments > 0)
+					ToastService.toast(String.plural(nbDocuments, lib.labels.documentLibrary.document) + ' ' + lib.labels.documentLibrary.uploadedSuccessfully + '.', 'success', 3000);
+
+				lib.data.uploading = false;
+			};
+
+			//If no Forms, just upload files
+			if(Array.isEmpty(containers))
+				return FileUploadService.uploadReadyFiles().then(onUploadSuccess);
+
+			//or update Forms, then upload files.
+			RemoteActionService.callRemoteAction('updateContainerInstanceListForDetails', [containers], function() {
+				FileUploadService.uploadReadyFiles().then(onUploadSuccess);
+			});
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description delete the created instances stored in lib.containerIdsToDelete before leaving the page
+		*
+		* @method
+		* @name cancelCreatingDocument
+		*
+		*/
+		lib.cancelCreatingDocument = () =>  lib.deleteContainerInstanceRedirect(true, false);
+		lib.goToDocumentLibrary    = () =>  lib.deleteContainerInstanceRedirect(false, true);
+
+		/**
+		* @module app/states/addDocument
+		* @description delete the created instances stored in lib.containerIdsToDelete and stay on the same page.
+		*
+		* @method
+		* @name deleteContainerInstanceRedirect
+		*
+		*/
+		lib.deleteContainerInstanceRedirect = function(goBack, goHome)
+		{
+			if(Array.isNotEmpty(lib.containerIdsToDelete)) {
+				RemoteActionService.callRemoteAction('deleteContainerInstanceList', [lib.containerIdsToDelete], function(result){
+					//TODO: add validation for responses
+					if(goBack)
+						NavigationService.goBack();
+					else if(goHome)
+						$state.go('home');
+				});
+			}
+			else if(goBack) {
+				NavigationService.goBack();
+			}
+			else if(goHome) {
+				$state.go('home');
+			}
+		};
+
+		// go back to previous page only if validation was successful
+		lib.goBack = function() {
+			if(lib.validMetadata)
+				NavigationService.goBack();
+		};
+
+		/**
+		* @module app/states/addDocument
+		* @description returns FileUploadService status for spinner show/hide
+		*
+		* @method
+		* @name uploading
+		*
+		*/
+		lib.creatingTemplate = () => lib.templateCreation;
+		lib.uploading        = () => FileUploadService.data.uploading;
+		lib.savingMetadata   = () => FileUploadService.data.savingMetadata;
+
+		lib.init();
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/services/NavigationService.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/services/NavigationService.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/services/NavigationService
+
+@description injectable angular service that contains navigation / redirection functions for Salesforce Lightning UI
+
+@example
+1. === Generate Links to object, list, VisualForce page
+
+Expose service in controller scope
+	vm.nav = NavigationService;
+
+HTML:
+&lt;a ng-href="{{vm.nav.objectUrl(vm.taskId)}}">Task View&lt;/a>
+&lt;a ng-href="{{vm.nav.objectUrl(vm.taskId, 'edit')}}">Task Edit&lt;/a>
+&lt;a ng-href="{{vm.nav.objectListUrl(vm.taskId)}}">Task List&lt;/a>
+&lt;a ng-href="{{vm.nav.objectListUrl('Request__c')}}"> Request List&lt;/a>
+
+&lt;a ng-href="{{vm.nav.pageUrl('TradingPartnerGroups', {id: 'a0a61000005Q5XbAAK', edit: true})}}">Edit Group&lt;/a>
+&lt;a ng-href="{{vm.nav.pageUrl('FormView', 'a0a61000005Q5XbAAK')}}">Form&lt;/a>
+
+@example
+2. === Use redirection functions in page controller
+
+HTML:
+&lt;button id="btn_RedirectTask" class="slds-button slds-button--neutral" ng-click="vm.goToTask()">Go to Task&lt;/button>
+&lt;button id="btn_RedirectTaskList" class="slds-button slds-button--neutral" ng-click="vm.goToTaskList()">Go to Task&lt;/button>
+&lt;button id="btn_RedirectForm" class="slds-button slds-button--neutral" ng-click="vm.goToForm()">Go to Form&lt;/button>
+
+JS controller:
+vm.goToTask = function()
+{
+	NavigationService.goToObject(vm.taskId);
+};
+
+vm.goToForm = function(containerId)
+{
+	NavigationService.goToPage("FormView", containerId);
+};
+
+vm.goToTaskList = function(containerId)
+{
+	NavigationService.goToObjectList(vm.taskId);
+};
+
+vm.goToRequestList = function(containerId)
+{
+	NavigationService.goToObjectList("Request__c");
+};
+
+*/
+
+module.exports = function (ngModule)
+{
+	ngModule.service('NavigationService', NavigationService);
+	NavigationService.$inject = ['CommonUtils'];
+	function NavigationService  ( CommonUtils )
+	{
+		var svc = this;
+		window.NavigationService = this;
+
+		const lightningApp = "/lightning";
+		const ATTACHMENT_DOWNLOAD_URL  = "/servlet/servlet.FileDownload";
+		const CONTENT_VERSION_PREVIEW_URL   = "/sfc/servlet.shepherd/version/renditionDownload";
+		const CONTENT_VERSION_DOWNLOAD_URL  = "/sfc/servlet.shepherd/version/download";
+		const ID_PARAM_SUFFIX = "_lkid";
+
+		svc.init = function()
+		{
+			svc.namespace       = CommonUtils.getNamespace();
+			svc.namespacePrefix = CommonUtils.getNamespacePrefix();
+
+			svc.parent = window.parent;
+			svc.opener = window.opener;
+
+			svc.currentUrl    = window.location.href;
+			svc.protocol      = window.location.href.substringBefore("://");
+			svc.currentPage   = window.location.pathname.substringAfter("/", true);
+			svc.currentPage   = svc.currentPage.substringAfter(svc.namespacePrefix, false, true);
+			svc.anchor        = svc.currentUrl.substringAfter("#");
+
+			svc.referrerUrl   = document.referrer || window.location.href;
+			svc.pageHostName  = window.location.href.substringAfter("://").substringBefore("/");
+			svc.pageDomain    = svc.protocol + "://" + svc.pageHostName;
+			svc.hostName      = svc.referrerUrl.substringAfter("://").substringBefore("/");
+			svc.domain        = svc.protocol + "://" + svc.hostName;
+			svc.lightningMode = svc.isLightning();
+			svc.debug = svc.getParameter("debug") == "true";
+		};
+
+		svc.isLightning = function() {
+			return svc.hostName.indexOf('lightning.') > -1;
+		};
+
+		svc.openFrameInTab = function()
+		{
+			var params = svc.getParameters();
+			svc.deleteLightningParameters(params);
+			svc.goToPage(svc.currentPage, params, "fullTab");
+		};
+
+		svc.hasParent = svc.inIframe = function()
+		{
+			try { return window.self !== window.top; }
+			catch (e) { return true; }
+		};
+
+		svc.redirect = function(link, windowName, absolute)
+		{
+			if(!link) return;
+
+			if(absolute &amp;&amp; !link.startsWith(svc.domain))
+				link = svc.domain + link;
+
+			console.log("NavigationService.redirect", link, windowName);
+			if(windowName)
+				return window.open(link, windowName);
+
+			if(window.sforce &amp;&amp; window.sforce.one)
+				return window.sforce.one.navigateToURL(link, true);
+
+			window.location.href = link;
+			return window;
+		};
+
+		//go to SObject list :  #/sObject/arthurdev1__Test__c/list
+		svc.objectListUrl = function(type, action)
+		{
+			if(!type) return "";
+			if(!action) action = "home";
+
+			if(svc.isObjectId(type))
+				type = type.substring(0, 3);
+			else if(svc.namespace &amp;&amp; type.indexOf("__c") > 0)
+				type = svc.namespacePrefix + type;
+
+			var link = "/" + type + "/o";
+			//TODO classic mode url ?
+			if(svc.lightningMode)
+				link = lightningApp + "/o/" + type + "/" + action;
+
+			return svc.domain + link;
+		};
+
+		svc.goToObjectList = function(type, action, windowName)
+		{
+			return svc.redirect(svc.objectListUrl(type, action), windowName);
+		};
+
+		svc.objectUrl = function(id, action)
+		{
+			if(!id) return "";
+			if(!action) action = "view";
+			var link = "/" + id;
+			if(svc.lightningMode)
+				link = lightningApp + "/r/" + id + "/" + action;
+
+			return svc.domain + link;
+		};
+
+		svc.goToObject = function(id, action, windowName) {
+			return svc.redirect(svc.objectUrl(id, action), windowName);
+		};
+
+		//Link from Custom Visual Force Page to another: stay on the same domain
+		// /one/one.app#/n/arthurdev1__FormList?a:t=1489539547607
+		svc.pageUrl = function(page, params)
+		{
+			if(!page) return "";
+
+			if(svc.namespacePrefix &amp;&amp; !page.startsWith(svc.namespacePrefix))
+				page = svc.namespacePrefix + page;
+
+			var link = "/apex/" + page;
+			link += svc.toQueryString(params);
+			return link;
+		};
+
+		svc.goToPage = function(page, params, windowName) {
+			return svc.redirect(svc.pageUrl(page, params), windowName);
+		};
+
+		svc.goToQuery = function(obj) {
+			var id = angular.isObject(obj) ? obj.Id || obj.id : obj;
+			svc.goToPage("SoqlQueryTest", id, "SoqlQuery");
+		};
+
+		//go to Lightning tab Url
+		svc.tabUrl = function(tab)
+		{
+			if(!tab) return "";
+
+			if(svc.namespacePrefix &amp;&amp; !tab.startsWith(svc.namespacePrefix))
+				tab = svc.namespacePrefix + tab;
+
+			var link = lightningApp + "/n/" + tab;
+			return link;
+		};
+
+		svc.goToTab = function(tab, params, windowName) {
+			return svc.redirect(svc.tabUrl(tab, params), windowName);
+		};
+
+		//if string : id parameter
+		//if object : multiple query stringparameters
+		svc.toQueryString = function(params)
+		{
+			var qs = "";
+			if(!params) return qs;
+
+			if(angular.isString(params))
+				params = {id: params};
+
+			var sep = "?";
+			for(var key in params)
+			{
+				if(String.isEmpty(params[key])) continue;
+
+				qs += sep + key + "=" + params[key];
+				sep = "&amp;";
+			}
+			return qs;
+		};
+
+		svc.goToAnchor = function(componentId) {
+			return window.location.hash = '#' + componentId;
+		};
+
+		svc.getUrl = function(link, params)
+		{
+			if(String.isEmpty(link))
+				link = NavigationService.currentUrl;
+
+			if(link.includes("?") &amp;&amp; angular.isDefined(params))
+				link = link.substringBefore("?");
+
+			if(params)
+				link += svc.toQueryString(params);
+
+			return link;
+		};
+
+		svc.goToUrl = function(link, params, windowName) {
+			return svc.redirect(svc.getUrl(link, params), windowName);
+		};
+
+		svc.contentVersionDownloadUrl = function(fileId) {
+			if(fileId)
+				return CONTENT_VERSION_DOWNLOAD_URL + "/" + fileId;
+		};
+
+		svc.downloadContentVersion = function(fileId) {
+			if(fileId)
+				svc.goToUrl(CONTENT_VERSION_DOWNLOAD_URL + "/" + fileId, null, "_blank");
+		};
+
+		svc.contentVersionPreviewUrl = function(fileId) {
+			if(fileId)
+				return svc.getUrl(CONTENT_VERSION_PREVIEW_URL, { rendition: "THUMB720BY480", versionId: fileId });
+		};
+
+		svc.previewContentVersion = function(fileId) {
+			if(fileId)
+				svc.goToUrl(CONTENT_VERSION_PREVIEW_URL, { rendition: "THUMB720BY480", versionId: fileId }, "_blank");
+		};
+
+		svc.attachmentDownloadUrl = function(fileId) {
+			if(fileId)
+				return svc.getUrl(ATTACHMENT_DOWNLOAD_URL, {file: fileId });
+		};
+
+		svc.downloadAttachment = svc.downloadFile = function(fileId) {
+			if(fileId)
+				svc.goToUrl(ATTACHMENT_DOWNLOAD_URL, {file: fileId }, "_blank");
+		};
+
+		// utility functions
+		svc.isObjectId = function(id)
+		{
+			return id &amp;&amp; (id.length == 3 || id.length == 15 || id.length == 18);
+		};
+
+		svc.goBack = function(n)
+		{
+			if(!n) n = -1;
+			window.history.go(n);
+		};
+
+		svc.getParameters = function(url)
+		{
+			if(!url)
+				url = svc.currentUrl;
+
+			var params = {};
+
+			var queryString = url.substringAfter("?").substringBefore("#");
+			if(String.isEmpty(queryString))
+				return params;
+
+			var pairs = queryString.split("&amp;");
+			for(var i = 0; i &lt; Array.getCount(pairs); i++)
+			{
+				if(String.isEmpty(pairs[i])) continue; //skip empty pairs if &amp;&amp; or &amp; at the end
+
+				var key = pairs[i].substringBefore("=");
+				if(String.isEmpty(key)) continue;      //skip empty name if &amp;=
+
+				var value = pairs[i].substringAfter("=");
+				params[key] = decodeURIComponent(value).replace(/\+/g, " ");
+			};
+			return params;
+		};
+
+		svc.getParameter = function(name, url)
+		{
+			if(!url)
+				url = svc.currentUrl;
+
+			if(!name)
+				return null;
+
+			name = name.replace(/[\[\]]/g, "\\$&amp;");
+			var regex = new RegExp("[?&amp;]" + name + "(=([^&amp;#]*)|&amp;|#|$)"),
+				results = regex.exec(url);
+			if(!results)
+				return null;
+			if(!results[2])
+				return '';
+			return decodeURIComponent(results[2].replace(/\+/g, " "));
+		};
+
+		//get Id and Name of Parent Record passed in current URL query string by Lightning (when using standard New button in a related list)
+		//in URL : Name: CF00N6100000894h1=AR+EKET+Specific+Main  / Id: CF00N6100000894h1_lkid=a0N6100000xP20A
+		svc.getParentRecord = function()
+		{
+			var params = svc.getParameters();
+			var keys = Object.keys(params);
+			var idKey = keys.find(s => String.endsWith(s, ID_PARAM_SUFFIX));
+			if(!idKey) return null;
+
+			var nameKey = String.substringBefore(idKey, ID_PARAM_SUFFIX);
+			return { Id: params[idKey], Name: params[nameKey] };
+		};
+
+		svc.getParentRecordId = function()
+		{
+			var params = svc.getParameters();
+			var keys = Object.keys(params);
+			var idKey = keys.find(s => String.endsWith(s, ID_PARAM_SUFFIX));
+			return params[idKey];
+		};
+
+		svc.getParentRecordName = function()
+		{
+			var params = svc.getParameters();
+			var keys = Object.keys(params);
+			var idKey = keys.find(s => String.endsWith(s, ID_PARAM_SUFFIX));
+			if(!idKey) return null;
+			var nameKey = String.substringBefore(idKey, ID_PARAM_SUFFIX);
+			return params[nameKey];
+		};
+
+		svc.deleteLightningParameters = function(params)
+		{
+			if(!params) return params;
+
+			delete params["sfdc.tabName"];
+			delete params.vfRetURLInSFX;
+			delete params.nonce;
+			delete params.tour;
+			delete params.sfdcIFrameOrigin;
+			delete params.sfdcIFrameHost;
+			delete params.isdtp;
+			delete params.ltn_app_id;
+			delete params.clc;
+
+			return params;
+		};
+
+		svc.init();
+	}
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: formview/app/services/TabService.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: formview/app/services/TabService.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module formview/services/TabService
+@description Angular service used to load / process form tab data.
+*/
+module.exports = function (ngModule) {
+	'use strict';
+
+	const LARGE_ANSWER_TYPES = ['long text', 'multi-picklist', 'multi-search'];
+	const JSON_ANSWER_TYPES  = ['upload', 'lab selection', 'query', 'nutritional'];
+	const SHORT_ANSWER_LENGTH = 255;
+	const LARGE_ANSWER_LENGTH = 5000;
+
+	const SCREEN_SIZES = [
+		//{size: "x-small", maxColumns: 6},
+		{size: "small",   maxColumns: 6},
+		{size: "medium",  maxColumns: 6},
+		{size: "large",   maxColumns: 12}
+	];
+	const MAX_COL = SCREEN_SIZES.last().maxColumns;
+
+	ngModule.service('TabService', TabService);
+	TabService.$inject = ['$rootScope', '$q', '$timeout', 'CommonUtils', 'NavigationService', 'FormValidationService', 'RemoteActionService', 'ToastService', 'ProductTestService', 'NutritionalTableService', 'SoqlService'];
+	function TabService  ( $rootScope,   $q,   $timeout,   CommonUtils,   NavigationService,   FormValidationService,   RemoteActionService,   ToastService,   ProductTestService,   NutritionalTableService,   SoqlService )
+	{
+		const svc = this;
+		const getVar = CommonUtils.getVar;
+
+		const settings = window.formViewSettings || {};
+		const containerInstanceId = settings.containerInstanceId;
+		const containerGlobalId   = settings.containerGlobalId;
+		const workflowActorType   = settings.workflowActorType;
+		const pageElementSelector =  svc.pageElementSelector = ".slds-page-header, .tab-title, q-section, .pt-container";
+
+		const elementFieldMap = svc.elementFieldMap = {
+			//element from Element__c, Question__c
+			key:  "LinkedQuestion__r.Global_Id__c",
+			type: el => getVar("LinkedQuestion__r.Answer_Type__c", el, "spacer"),
+			//parentSection: "ParentSection__c",
+			className: "ClassName__c",
+
+			//LinkedQuestion__r from Question__c
+			"data.id":                          "LinkedQuestion__r.Id",
+			"data.sectionId":                   "ParentSection__c",
+			"data.name":                        "LinkedQuestion__r.Name",
+			"data.label":                       "LinkedQuestion__r.Question_Text__c",
+			"data.answerType":                  "LinkedQuestion__r.Answer_Type__c",
+			"data.dependentQuestionId":         "LinkedQuestion__r.Parent_Questions__c",
+			"data.parentQuestionIds":           el => {
+				var ids = getVar("LinkedQuestion__r.Parent_Questions__c", el);
+				return ids &amp;&amp; String.split(ids, ";", true, true);
+			},
+			"data.dependentTestAnswer":         "LinkedQuestion__r.Dependent_Answer__c",
+			"data.dependentAction":             "LinkedQuestion__r.Dependency_Action__c",
+			"data.linkedQuestionEntity":        "LinkedQuestion__r.Sub_Data_Entity__c",
+			"data.dataEntity":                  "LinkedQuestion__r.Data_Entity__c",
+			"data.subDataEntity":               "LinkedQuestion__r.Sub_Data_Entity__c",
+			"data.systemFieldId":               "LinkedQuestion__r.System_Field_Id__c",
+			"data.doNotRequireUploadDate":      "LinkedQuestion__r.Do_Not_Require_Upload_Date__c",
+			"data.formula":                     "LinkedQuestion__r.Formula__c",
+			"data.query":                       (el, out) => String.startsWith(out.type, "query") ? getVar("LinkedQuestion__r.Answer_Regex__c", el) : undefined,
+			"data.answerRegex":                 (el, out) => {
+				if(out.data.query) return;
+				let regex = getVar("LinkedQuestion__r.Answer_Regex__c", el, "");
+				if(regex) return regex + '|^$';
+			},
+			"data.answerRegexFlag":             (el, out) => out.data.answerRegex ? getVar("LinkedQuestion__r.Answer_Regex_Flag__c", el, "i") : undefined,
+
+			//templateOptions from Element__c
+			"templateOptions.id":               "Global_Id__c",
+			"templateOptions.elementId":        "Id",
+			"templateOptions.comments":         () => [],
+			"templateOptions.columns":          "Columns__c",
+			"templateOptions.questionFormat":   "Question_Format__c",
+			"templateOptions.keepEditableFor":  "Keep_Editable_For__c",
+			"templateOptions.keepEditable":     el => String.includes(getVar("Keep_Editable_For__c", el), workflowActorType),
+			"templateOptions.readOnlyFor":      "Optionally_Read_Only_For__c",
+			"templateOptions.readOnly":         el => getVar("LinkedQuestion__r.Read_Only__c", el) || getVar("Read_Only__c", el) || String.includes(getVar("Optionally_Read_Only_For__c", el), workflowActorType),
+			"templateOptions.required":         (el, out) => !out.templateOptions.readOnly &amp;&amp; getVar("LinkedQuestion__r.Response_Required__c", el),
+
+			//templateOptions from Question__c
+			"templateOptions.placeholder":      "LinkedQuestion__r.Placeholder_Text__c",
+			"templateOptions.enableCopyToAll":  "LinkedQuestion__r.Enable_Copy_To_All__c",
+			"templateOptions.multiResponse":    "LinkedQuestion__r.Multi_Response__c",
+			"templateOptions.invalidMessage":   "LinkedQuestion__r.Validation_Message__c",
+			"templateOptions.description":      "LinkedQuestion__r.Tooltip__c",
+			"templateOptions.optionListName":   "LinkedQuestion__r.Option_List_Name__c",
+			"templateOptions.internal":         "LinkedQuestion__r.IsInternalOnly__c",
+
+			"templateOptions.minlength":        (el, out) => {
+				if(!out.type || Array.in(out.type, ["checkbox", "number", "min/max scale"]) || out.type.startsWith("date"))
+					return;
+				return getVar("LinkedQuestion__r.MinScale__c", el, 0);
+			},
+			"templateOptions.maxlength":        (el, out) => {
+				if(!out.type || Array.in(out.type, ["checkbox", "number", "min/max scale"]) || out.type.startsWith("date"))
+					return;
+
+				let maxScale = getVar("LinkedQuestion__r.MaxScale__c", el, 0);
+				let defaultMaxLength = Array.in(out.type, LARGE_ANSWER_TYPES) ? LARGE_ANSWER_LENGTH : SHORT_ANSWER_LENGTH;
+				return (maxScale == 0 || maxScale > defaultMaxLength) ? defaultMaxLength : maxScale;
+			},
+			"templateOptions.min":              (el, out) => {
+				if(Array.in(out.type, ["number", "min/max scale"]) || String.startsWith(out.type, "date"))
+					return getVar("LinkedQuestion__r.MinScale__c", el);
+			},
+			"templateOptions.max":              (el, out) => {
+				if(Array.in(out.type, ["number", "min/max scale"]) || String.startsWith(out.type, "date"))
+					return getVar("LinkedQuestion__r.MaxScale__c", el);
+			}
+		};
+
+		svc.tabs = [];
+		svc.parentTabs = [];
+		svc.showOverflowTabs = false; //for selectTab function
+		svc.model = {};
+		svc.hasProductTests = false; //will become true if 'product test' answer type found
+		svc.tableSections = {}; //table section maps
+		svc.pdfDocument = {};
+
+		// set the default selected tab to zero
+		// loop through the tabs to find the selected tab.
+		svc.currentTab = Math.max(0, Array.findIndex(svc.tabs, t => t.selectedTab));
+
+		var dependencyMap = svc.dependencyMap = {};
+		var parentDependencyMap = svc.parentDependencyMap = {};
+		var elementMap = svc.elementMap = {};
+
+		//functions shared with FormValidationService
+		svc.setFormDirty  = FormValidationService.setFormDirty;
+		svc.isFormChanged = FormValidationService.isFormChanged;
+		svc.isReadOnly    = FormValidationService.isReadOnly;
+		svc.isEditable    = FormValidationService.isEditable;
+		svc.isFormula     = FormValidationService.isFormula;
+		svc.isDependentPicklist = FormValidationService.isDependentPicklist;
+		svc.isFileSelected = isFileSelected;
+		svc.isValid = isValid;
+
+		//expose functions in $rootScope
+		$rootScope.printMode = false;
+		$rootScope.isFieldInvalid = isFieldInvalid;
+		$rootScope.isRequiredFieldEmpty = isRequiredFieldEmpty;
+
+		// -------------------------------------------------------------------------
+		// ---------------- Form / Tab / Answer data loading Functions -------------
+		// -------------------------------------------------------------------------
+
+		/** @method loadFormObjects
+@description Fetches all the date that are in a form.
+@return {Object} - object containing all the tabs, sections, elements, questions, comments, containerTemplate in the form.
+*/
+		svc.loadFormObjects = function(){
+			return RemoteActionService.callRemoteAction("loadFormObjects", [containerInstanceId, workflowActorType]);
+		};
+
+		/** @method getAllComments
+@description Fetches all the comments in a form.
+@return {Object} - Array of objects containing all the comments in the form.
+*/
+		svc.getAllComments = function(){
+			return RemoteActionService.callRemoteAction("getAllComments", [containerInstanceId],
+				result => {
+					svc.comments = result;
+					var formElements = svc.formObjects ? svc.formObjects.elements : svc.getAllFormElements();
+					Array.setChildren(formElements, svc.comments, "key", "questionGlobalId", "templateOptions.comments");
+				}, svc);
+		};
+
+		/** @method loadFormLayout
+@description Loads the form layout for a container, its list of tabs and its first tab contents
+@return {Object} - Layout Object containing all the container information such as title, category, list of tabs, etc.
+*/
+		svc.loadFormLayout = function() {
+			return RemoteActionService.callRemoteAction("loadFormObjects", [containerInstanceId, workflowActorType], svc.objectsToLayout, svc);
+		};
+
+		svc.objectsToLayout = function(formObjects)
+		{
+			var startTime = new Date();
+
+			svc.formObjects = formObjects;
+			if(!formObjects || !formObjects.containerTemplate)
+				return svc.layout = {};
+
+			formObjects.elements = CommonUtils.remap(formObjects.elements, elementFieldMap);
+			Array.setChildren(svc.formObjects.elements, svc.comments, "key", "questionGlobalId", "templateOptions.comments");
+			elementMap = svc.elementMap = Array.indexBy(formObjects.elements, "key");
+
+			svc.productTestElement = settings.isProductTestForm &amp;&amp; Array.find(formObjects.elements, el => Array.in(el.type, ["product test", "product test results"]) );
+			if(svc.productTestElement) {
+				svc.productTestElement.templateOptions.required = workflowActorType == "Verifier"; //make required for lab validation
+				ProductTestService.data.questionGlobalId = svc.productTestElement.key;
+				ProductTestService.setComments(svc.productTestElement.templateOptions.comments);
+			}
+
+			if(Array.isNotEmpty(formObjects.answerOptions)) {
+				formObjects.answerOptions = CommonUtils.sobjectToCamelCase(formObjects.answerOptions);
+				Array.setChildren(formObjects.elements, formObjects.answerOptions, "key", "questionGlobalId", "templateOptions.options");
+			}
+
+			formObjects.sections = CommonUtils.sobjectToCamelCase(formObjects.sections);
+			formObjects.sections.by = {};
+			Array.indexBy(formObjects.sections, "id", true);
+			formObjects.sections.by.tabId = Array.groupBy(formObjects.sections, "parentTab", true);
+			CommonUtils.renameFields(formObjects.sections, { name: "title", style: "type", descriptionRichText: "description" });
+			Array.setChildren(formObjects.sections, formObjects.elements, "id", "data.sectionId", "elements");
+
+			formObjects.tabs = CommonUtils.sobjectToCamelCase(formObjects.tabs);
+			angular.forEach(formObjects.tabs, (tab, index) => {
+				tab.index = index;
+				CommonUtils.renameField(tab, "name", "title");
+			});
+			Array.setChildren(formObjects.tabs,     formObjects.sections,     "id", "parentTab",     "sections");
+
+			formObjects.containerTemplate = CommonUtils.sobjectToCamelCase(formObjects.containerTemplate);
+
+			if(Array.isNotEmpty(formObjects.optionLists)) {
+				formObjects.optionLists = CommonUtils.sobjectToCamelCase(formObjects.optionLists);
+				angular.forEach(formObjects.optionLists, list => list.listItems.forEach(i => i.id = i.value) );
+				formObjects.optionLists.byName = formObjects.optionLists.indexBy("name");
+			}
+
+			var time =  new Date() - startTime;
+			svc.tabs = formObjects.containerTemplate.tabs = svc.processTabs(formObjects.tabs);
+			svc.loadTab(0);
+			console.log("objectsToLayout:", time, "ms");
+
+			return svc.layout = formObjects.containerTemplate;
+		};
+
+		/** @method checkPreviousInstances
+@description Load Container instances of the same template (excluding current instance Id).
+@param  {String} instanceId - instance id
+@return {Object} - Array containing all the instances of the same template(excluding current instance Id).
+*/
+		svc.checkPreviousInstances = function(instanceId){
+			if(String.isEmpty(instanceId))
+				instanceId = containerInstanceId;
+			return RemoteActionService.callRemoteAction("getOtherInstances", [instanceId], "containerInstanceList", svc);
+		};
+
+		/** @module app/TabService
+@method getFormAnswers
+@description Loads all the answers of the form questions.
+@param {String} instanceId - instance id
+@return {Object} - Object containing all the answers of the questions of the form.
+*/
+		svc.getFormAnswers = function(instanceId){
+			if(String.isEmpty(instanceId))
+				instanceId = containerInstanceId;
+			return RemoteActionService.callRemoteAction("getFormAnswers", [containerInstanceId, instanceId], "formAnswers", svc);
+		};
+
+		/** @method loadFormAnswers
+@description Loads all the answers of the form questions.
+@return {Object} - Object containing all the answers of the questions of the form.
+*/
+		svc.loadFormAnswers = function()
+		{
+			if(settings.formAnswers)
+				return RemoteActionService.resolvePromise(settings.formAnswers);
+
+			return svc.getFormAnswers(containerInstanceId).then(result => svc.processAnswers(result, svc.model));
+		};
+
+		svc.loadAllFormAnswers = function(instanceId)
+		{
+			if(String.isEmpty(instanceId))
+				instanceId = containerInstanceId;
+
+			return RemoteActionService.callRemoteAction("loadFormAnswers", [instanceId], function(result) {
+				svc.history  = result.history;
+				svc.answers  = CommonUtils.sobjectToCamelCase(result.answers);
+				svc.actors = CommonUtils.sobjectToCamelCase(result.actors);
+				if(svc.actors)
+					angular.forEach(svc.answers, a => {
+						const actor = svc.actors[a.creatorGlobalId];
+						if(!actor) return;
+						a.tradingPartner = actor.name;
+						a.actorType = actor.actorType;
+					});
+
+				svc.model  = svc.processAnswers(svc.answers);
+
+				svc.comments = CommonUtils.sobjectToCamelCase(result.comments);
+				CommonUtils.renameFields(svc.comments, {
+					uBE: "ubeAccount",
+					name: "tpName",
+					"containerQuestion.productTest.test.testName":  "testName",
+					"containerQuestion.productTest.testClass.name": "testClassName"
+				});
+				angular.forEach(svc.comments, c => c.comment = c.comment.replaceAll("//n", "\n") );
+				if(svc.formObjects)
+					Array.setChildren(svc.formObjects.elements, svc.comments, "key", "questionGlobalId", "templateOptions.comments");
+
+				if(svc.productTestElement)
+					ProductTestService.setComments(svc.productTestElement.templateOptions.comments);
+
+			}, svc);
+		};
+
+		/** @module app/TabService
+@method selectTab
+@description Loads all the answers of the form questions.
+@param {Number} index - tab index starting from 0
+@return {Object} - Promise to load tab or undefined if already loaded
+*/
+		svc.selectTab = function(index)
+		{
+			svc.showOverflowTabs = false;
+			if(Array.isEmpty(svc.tabs)) return;
+
+			if(index &lt; 0) index = 0;
+			else if(index >= svc.tabs.length)
+				index = svc.tabs.length - 1;
+
+			svc.currentTab = index;
+			svc.loadTab(index);
+		};
+
+		/** @method loadTab
+@description Loads all data for 1 tab (sections, elements, questions).
+@return {Object} - Tab Object containing all the answers of the questions of the form.
+*/
+		svc.loadTab = function(index, loadNext, callback)
+		{
+			var tab = svc.getTab(index);
+			if(!tab)
+				return console.log("no tab" + index);
+
+			if(loadNext)
+				loadNext = index &lt; Array.getCount(svc.tabs) - 1;
+
+			console.log("tab", index, "loaded", svc.isTabLoaded(index));
+			tab.isLoaded = true;
+
+			if(loadNext)
+				svc.loadTab(index + 1, loadNext, callback);
+			else if(angular.isFunction(callback))
+				callback();
+			return tab;
+		};
+
+		/** @method loadAllTabs
+@description Make sure that all tabs are loaded and calls a callback.
+*/
+		svc.loadAllTabs = function(queued, callback)
+		{
+			//if all tabs are already loaded: call callback directly
+			if(svc.allTabsLoaded())
+				return angular.isFunction(callback) &amp;&amp; callback();
+
+			if(queued)
+				return svc.loadTab(0, true, callback);
+
+			//look for tabs not loaded and add a promise for each (load tab method)
+			for(let i = 0; i &lt; Array.getCount(svc.tabs); i++)
+				svc.loadTab(i);
+
+			//when all tabs loaded = when all promises return = call callback
+			if(angular.isFunction(callback))
+				$timeout(callback, 0);
+		};
+
+		//get tab by index or id
+
+		/** @method getTab
+@description Loads a tab whose by id.
+@param {String} tabId - tab id
+@return {Object} - Object containing the tab and it's elements
+*/
+		svc.getTab = function(tabId)
+		{
+			if(Array.isEmpty(svc.tabs)) return;
+			if(angular.isNumber(tabId)) return svc.tabs[tabId];
+
+			if(!svc.tabs.by)
+				svc.tabs.indexBy("id", true);
+			return svc.tabs.by.id[tabId];
+		};
+
+		/** @method isTabLoaded
+@description Checks if a tab is loaded
+@return {Boolean} - true if tab contents is already loaded / false if it is not loaded.
+*/
+
+		svc.isTabLoaded = function(tabId)
+		{
+			var tab = svc.getTab(tabId);
+			return tab &amp;&amp; !!tab.isLoaded;
+		};
+
+		/** @method allTabsLoaded
+@description Checks if all the tabs are loaded
+*/
+		svc.allTabsLoaded = function()
+		{
+			return Array.every(svc.tabs, "isLoaded");
+		};
+
+		// -------------------------------------------------------------------------
+		// ------------------------- Post load processing Functions -----------------------
+		// -------------------------------------------------------------------------
+
+		/** @method processTabs
+@description process the tabs.
+Add regex, convert element default values depending on their type.
+
+@param {Object|Object[]} tabs - The tab object(s) in an unprocessed state
+@param {Object} vm - The self context of the current directive
+@returns {Object} {Object[]} tabs processed
+*/
+		svc.processTabs = function(tabs)
+		{
+			if(Array.isEmpty(tabs))
+				return [];
+
+			if(!angular.isArray(tabs))
+				tabs = [tabs];
+
+			// add the function needed for regex to be active
+			for(let t = 0; t &lt; Array.getCount(tabs); t++)
+			{
+				let tab = tabs[t];
+				if(!angular.isDefined(tab.index))
+					tab.index = t;
+
+				for (let s = 0; s &lt; Array.getCount(tab.sections); s++)
+				{
+					let section = tab.sections[s];
+					section.index = s;
+					section.tabId = tab.id;
+					section.tabIndex = tab.index;
+					section.tabTitle = tab.title;
+					section.readOnly = svc.isSectionReadOnly(section);
+
+					if(Array.in(section.type, ["Table", "Group"]))
+						svc.tableSections[section.id] = section;
+
+					let spacers = [];
+					for (let e = 0; e &lt; Array.getCount(section.elements); e++)
+					{
+						let element = section.elements[e];
+						element.data.index = e;
+
+						element.data.sectionId = section.id;
+						element.data.sectionType = section.type;
+						element.data.sectionIndex = s;
+						element.data.sectionTitle = section.title;
+
+						element.data.tabId = tab.id;
+						element.data.tabIndex = tab.index;
+						element.data.tabTitle = tab.title;
+
+						if(element.key &amp;&amp; !elementMap[element.key])
+							elementMap[element.key] = element;
+
+						//build list of spacers before each element
+						if(element.type == "spacer")
+							spacers.push(element);
+						else if(Array.isNotEmpty(spacers))
+						{
+							element.templateOptions.spacersBefore = spacers;
+							spacers = [];
+						}
+
+						//convert columns to Number
+						if(angular.isString(element.templateOptions.columns))
+							element.templateOptions.columns = String.split(element.templateOptions.columns, ";", true).map(Number);
+						element.templateOptions.largeColumns = Array.last(element.templateOptions.columns) || MAX_COL;
+
+						if(Array.in(element.type, ["product test", "product test results"]))
+						{
+							tab.hasProductTests = svc.hasProductTests = true;
+							element.templateOptions.required = workflowActorType == "Verifier"; //make required for lab validation
+						}
+
+						// ProductTestService: add component column  //take parent section model
+						else if(element.data.systemFieldId == "ProductComponents") {
+							ProductTestService.data.componentNameQuestionId = element.key;
+							ProductTestService.data.componentSectionId = section.id;
+						}
+
+						svc.processElement(element);
+					}
+
+					section.singleColumn = Array.every(section.elements, element => element.templateOptions.largeColumns == MAX_COL);
+				}
+			}
+
+			//post-processsing after loading all elements
+			//setup dependency event
+			for(let t = 0; t &lt; Array.getCount(tabs); t++) {
+				var tab = tabs[t];
+				Array.indexBy(tab.sections, "id", true);
+
+				for (var s = 0; s &lt; Array.getCount(tab.sections); s++) {
+					var section = tab.sections[s];
+					for (var e = 0; e &lt; Array.getCount(section.elements); e++) {
+						var element = section.elements[e];
+						svc.initDependencies(element);
+					}
+				}
+			}
+
+			//convert model answers into table rows
+			if(Object.isNotEmpty(svc.tableSections))
+			{
+				if(!svc.model.tables)
+					svc.model.tables = {};
+
+				for(let sectionId in svc.tableSections)
+					if(!svc.model.tables[sectionId])
+						svc.model.tables[sectionId] = svc.initTableSectionRows(svc.tableSections[sectionId], svc.model);
+
+				if(tab.hasProductTests &amp;&amp; ProductTestService.data.componentSectionId)
+					ProductTestService.data.components = svc.model.tables[ProductTestService.data.componentSectionId];
+			}
+
+			if(Array.isNotEmpty(tabs))
+				tabs[0].isLoaded = true;
+
+			if(Array.isEmpty(svc.tabs))
+				svc.tabs = tabs;
+
+			Array.indexBy(svc.tabs, "id", true);
+
+			return tabs;
+		};
+
+		/**
+	@method processElement
+	@description process the elements in a tab such as upload, nutritional table, picklist etc.
+
+	@param {Object|Object[]} element - The element object(s)
+	@returns {Object} {Object[]} element processed
+*/
+
+		svc.processElement = function(element)
+		{
+			if(!element || !element.type) return;
+
+			if(!element.validators) element.validators = {};
+			if(!element.expressionProperties) element.expressionProperties = {};
+			element.className = svc.buildStyleClasses(element);
+
+			//initialize options if element uses an optionList
+			angular.forEach(element.templateOptions.options, i => i.name = i.label || i.value || i.name);
+
+			if(element.templateOptions.optionListName &amp;&amp; !String.includes(element.type, "search") )
+			{
+				var optionList = getVar([ "optionLists", "byName", element.templateOptions.optionListName ], svc.formObjects);
+				if(optionList &amp;&amp; !element.templateOptions.options)
+					element.templateOptions.options = [];
+				if(optionList)
+					element.templateOptions.options.pushAll(optionList.listItems);
+			}
+
+			// checks for complex object and deserializes JSON to object
+			if(element.type.startsWith('nutritional'))
+			{
+				if(!svc.nutritionTableData)
+					svc.nutritionTableData = {};
+
+				if(!svc.nutritionTableData[element.type])
+					svc.nutritionTableData[element.type] = NutritionalTableService.buildNutritionPanel(element.type);
+
+				element.defaultValue = CommonUtils.isJsonString(element.defaultValue) ? angular.fromJson(element.defaultValue) : null;
+				element.templateOptions.nutritionTableData = svc.nutritionTableData[element.type];
+				element.templateOptions.invalidMessage = "invalid values in " + element.type;
+			}
+			else if (element.type === 'min/max scale') {
+				if(String.isEmpty(element.templateOptions.min)) element.templateOptions.min = 0;
+				if(String.isEmpty(element.templateOptions.max)) element.templateOptions.max = 100;
+			}
+			else if (element.type === 'upload' &amp;&amp; svc.isElementInCard(element)) {
+				element.validators.isFileSelected = isFileSelected;
+			}
+			else if(Array.isNotEmpty(element.templateOptions.options)) {
+				//AP-987 avoid angular error with duplicates
+				element.templateOptions.options = Array.dedupBy(element.templateOptions.options, "id");
+				var defaultOption = element.templateOptions.options.find(option => option.isDefault);
+				if(defaultOption)
+					element.defaultValue = Array.in(element.type, ["picklist", "radio"]) ? defaultOption.id : defaultOption.value;
+			}
+
+			// defines the regex for the field element
+			element.validators.isValid = isValid;
+
+			//load / process value from model or default element value
+			if(!String.isMissing(svc.model[element.key]))
+				svc.model[element.key] = svc.processElementValue(element, svc.model[element.key]);
+			else if(!String.isMissing(element.defaultValue))
+				svc.model[element.key] = svc.processElementValue(element, element.defaultValue);
+			else if(element.type === 'checkbox') //if checkbox value undefined, set to false by
+				svc.model[element.key] = false;
+		};
+
+		/** @method processElementValue
+@description process / convert the answer value for a form element when loading
+@param {String} questionId - id of the question
+@param {String} value - value
+@returns {String} - processed value from model or default element value
+*/
+		svc.processElementValue = function(questionId, value)
+		{
+			var element = questionId;
+			if(angular.isString(questionId))
+				element = elementMap[questionId];
+			else if(angular.isObject(questionId))
+				questionId = element.key;
+
+			//if element not loaded yet: keep current value. convert value later when element is loaded or used in a formula
+			if(!element || !element.type)
+				return value;
+
+			//for upload and nutritioanl and get json data from form answers
+			if(element.type === "upload" || element.type.startsWith("nutritional"))
+				return CommonUtils.isJsonString(value) ? angular.fromJson(value) : null;
+
+			if(element.type.startsWith("query"))
+			{
+				value = CommonUtils.isJsonString(value) ? angular.fromJson(value) : null;
+				element.data.columns = SoqlService.getColumnsFromQuery(element.data.query, true, element.data.columnLabels);
+
+				//data is only populated by origin org of the data
+				//example: "query requestor" is only editable for Requestor, read-only for other actors
+				//example: "query responder" is only editable for Responder, read-only for other actors
+				var queryActor = element.type.substringAfter(" ");
+				element.templateOptions.readOnly = !String.equals(workflowActorType, queryActor);
+				//console.log("processElementValue", element.type, arguments.length, value);
+				return value;
+			}
+
+			if(element.type === "number")
+				return String.isNotEmpty(value) ? Number(value) : null;
+
+			// checks for dates and converts strings to date objects
+			if(Array.in(element.type, ["checkbox", "date", "datetime"]))
+				return svc.parseValue(value);
+
+			return value;
+		};
+
+/** @method buildStyleClasses
+@description Build Style Classes based on element columns for responsive design
+@param {Object} element - form element
+@returns {String} slds-size class names
+@example 2;4;4 => slds-col-padded slds-size--6-of-6
+*/
+
+		svc.buildStyleClasses = function(element)
+		{
+			var classNames = [];
+			if(element.className)
+				classNames.push(element.className);
+
+			var columns = getVar("templateOptions.columns", element, 6);
+			for(let i = 0; i &lt; columns.length; i++) {
+				var className = String.format("slds-{0}-size--{1}-of-{2}", SCREEN_SIZES[i].size, columns[i], SCREEN_SIZES[i].maxColumns);
+				classNames.push(className);
+			}
+			return classNames.join(" ");
+		};
+
+		/** @method runSoqlQuery
+@description runs SOQL database query on the element
+@param {Object} element - form element
+@returns {Object} Promise waiting for query result
+*/
+		svc.runSoqlQuery = function(element)
+		{
+			var query = getVar("data.query", element);
+			if(!query) return;
+
+			var promise = RemoteActionService.callRemoteAction("runQuestionQuery", [containerInstanceId, element.key, true], function(result)
+			{
+				element.data.columns = SoqlService.getColumnsFromQuery(query, true, element.data.columnLabels);
+				svc.model[element.key] = result;
+				svc.setFormDirty();
+			});
+
+			promise.catch(function(err) {
+				svc.loading = false;
+				ToastService.toast(err.message, "error", 0);
+				console.error("TabService.runSoqlQuery:", err.message, err.data);
+			});
+
+			return promise;
+		};
+
+		/** @method populateQueryAnswers
+@description auto-populate answers to query questions for current actor
+*/
+		svc.populateQueryAnswers = function()
+		{
+			var elements = svc.getFormElementsByType("query " + workflowActorType);
+			angular.forEach(elements, function(el) {
+				if(!svc.model[el.key] &amp;&amp; svc.isEditable(el))
+					svc.runSoqlQuery(el);
+			});
+		};
+
+		/** @method parseValue
+@description Infer value type if element is not loaded yet: numeric => Number / "true" or "false" => boolean
+*/
+		svc.parseValue = function(value)
+		{
+			if(String.isEmpty(value)) return value;
+			if(String.equals(value, "true"))  return true;
+			if(String.equals(value, "false")) return false;
+			if(!isNaN(value))  return Number(value);
+			return value;
+		};
+
+		//load existing form answers into model
+
+		/** @method processAnswers
+@description Process / transform form answers to use them in the form after loading
+@param {Object} formAnswers - Map of form answer values (Question Global Id / Multi response Id as key)
+@returns {Object} Form model (Map by question global id)
+*/
+		svc.processAnswers = function(formAnswers, model)
+		{
+			if(!model)
+				model = {};
+
+			if(Array.isArray(formAnswers))
+			{
+				//Array.sortObjectsBy(formAnswers, "versionNumber", true);
+				//Array.sortObjectsBy(formAnswers, "rowNumber");
+				CommonUtils.renameField(formAnswers, "versionNumber", "version");
+
+				//answer key: Multiple Response Id must contain rowNumber___questionId for table answers . if not, use question Global Id
+				var answerMap = Array.groupBy(formAnswers, a => String.includes(a.multipleResponseId, "___") ? a.multipleResponseId : a.questionGlobalId);
+				angular.forEach(answerMap, (answers, key) => {
+					var answerValue = svc.getAnswerValue(answers[0]);
+					answers.shift();
+					answerMap[key] = { value: answerValue };
+					answerMap[key].oldValues = answers;
+				});
+				formAnswers = answerMap;
+			}
+
+			for (var key in formAnswers)
+			{
+				var keys = key.split("___");
+				var value = formAnswers[key].value;
+				var oldValues = formAnswers[key].oldValues;
+
+				var questionId = keys.length === 2 ? keys[1] : key;
+				var rowIndex   = keys.length === 2 ? Number(keys[0]) : null;
+
+				if(keys.length === 1)
+				{
+					//single value for card section
+					model[questionId] = svc.processElementValue(questionId, value);
+				}
+				else
+				{
+					//array for table section column
+					if(!model.$columns) model.$columns = {};
+					if(!angular.isArray(model.$columns[questionId])) model.$columns[questionId] = [];
+
+					model.$columns[questionId][rowIndex] = svc.processElementValue(questionId, value);
+				}
+
+				if(Array.isNotEmpty(oldValues)){
+					if(!model.$oldValues)
+						model.$oldValues = {};
+					model.$oldValues[key] = oldValues;
+				}
+			}
+
+			if(Object.isNotEmpty(svc.tableSections))
+			{
+				model.tables = {};
+				for(let sectionId in svc.tableSections)
+					model.tables[sectionId] = svc.initTableSectionRows(svc.tableSections[sectionId], model);
+
+				if(ProductTestService.data.componentSectionId)
+					ProductTestService.data.components = model.tables[ProductTestService.data.componentSectionId];
+			}
+
+			//after processing all element answers: recalculate formulas
+			for(let elementId in dependencyMap)
+				svc.refreshElementFormula(elementId, model);
+
+			return model;
+		};
+
+		//svc.getAnswerValue = answer => CommonUtils.getFirstVar(["Selected_Answer_Option__r.Value__c", "Supplied_Date__c", "JSON_Data__c", "Large_Answer__c", "Supplied_Answer__c"], answer);
+		svc.getAnswerValue = answer => CommonUtils.getFirstVar(["selectedAnswerOption.id", "suppliedDate", "jSONData", "largeAnswer", "suppliedAnswer"], answer);
+
+		//load existing answers into section rows
+		svc.initTableSectionRows = function(section, formAnswers)
+		{
+			if(!Array.in(section.type, ["Table", "Group"]))
+				return;
+
+			var rows = [];
+			rows.nbAnswers = 0;
+			for (var e = 0; e &lt; Array.getCount(section.elements); e++)
+			{
+				var element = section.elements[e];
+				var column  = formAnswers.$columns &amp;&amp; formAnswers.$columns[element.key];
+
+				if(!angular.isDefined(column))
+					continue;
+
+				if(!angular.isArray(column))
+					column = [column];
+
+				//fill all the rows for this question/column
+				for (var r = 0; r &lt; Array.getCount(column); r++)
+				{
+					if(!rows[r])
+						rows[r] = {};
+
+					rows[r].$rowindex = r;
+					rows[r][element.key] = column[r];
+					if(formAnswers.hasOwnProperty('$oldValues')){
+						//create the table key
+						var key = String.leftPad(r, 8, "0") + '___' + element.key;
+						if(!rows[r].$oldValues)
+							rows[r].$oldValues = {};
+						rows[r].$oldValues[element.key] = formAnswers.$oldValues[key];
+					}
+					rows.nbAnswers++;
+				}
+
+				//remove column from card model
+				delete formAnswers.$columns[element.key];
+			}
+
+			//if table section is empty and editable: create at least 1 row
+			if(!section.readOnly &amp;&amp; Array.isEmpty(rows))
+			{
+				var newRow = svc.newTableSectionRow(section);
+				newRow.$rowindex = 0;
+				rows.push(newRow);
+			}
+
+			return rows;
+		};
+
+		//initialize a new table section row, with default value for each column if it exists
+		svc.newTableSectionRow = function(section)
+		{
+			//set default field values as per columns (elements)
+			var row = {};
+			for(let i = 0; i &lt; Array.getCount(section.elements); i++)
+			{
+				const col = section.elements[i];
+				if (col.key &amp;&amp; col.type &amp;&amp; angular.isDefined(col.defaultValue))
+					row[col.key] = col.defaultValue;
+			}
+			return row;
+		};
+
+		//delete row from group section
+		svc.deleteSectionRow = function(section, index)
+		{
+			var rows = svc.model.tables[section.id];
+			if(Array.isEmpty(rows)) return;
+
+			rows.splice(index, 1);
+			for(let i = index; i &lt; rows.length; i++)
+				rows[i].$rowindex = i;
+
+			svc.setFormDirty();
+		};
+
+		//add row into group section
+		svc.addSectionRow = function(section, index)
+		{
+			var rows = svc.model.tables[section.id];
+			if(!rows)
+				rows = svc.model.tables[section.id] = [];
+
+			if(!angular.isDefined(index))
+				index = rows.length;
+
+			var newRow = svc.newTableSectionRow(section);
+			rows.insert(index, newRow);
+
+			for(let i = index; i &lt; rows.length; i++)
+				rows[i].$rowindex = i;
+
+			svc.setFormDirty();
+		};
+
+
+		//copy the column value from current row to all other rows in a Table or Group section
+		svc.copyValueToAllRows = function(element, rowNumber)
+		{
+			if(!element) return;
+			if(!rowNumber) rowNumber = 0;
+			
+			//get section model rows from element
+			let sectionRows = svc.model.tables[element.data.sectionId];
+			angular.forEach(sectionRows, row => row[element.key] = sectionRows[rowNumber][element.key]);
+			return sectionRows;
+		};
+		
+
+		// -------------------------------------------------------------------------
+		// ------------------------- Form Printing Functions -----------------------
+		// -------------------------------------------------------------------------
+
+		svc.initPdfDocument = () => svc.pdfDocument = { name: svc.layout.name, category: svc.layout.type, expirationDate: svc.layout.expirationDate, orientation: "portrait", format: "pdf", deleteTemp: true };
+
+		svc.convertToPdf = function(containerId)
+		{
+			console.log("TabService convertToPDF", containerId);
+			var args = [ containerId, svc.pdfDocument.name, svc.pdfDocument.category, svc.pdfDocument.expirationDate, svc.pdfDocument.orientation, svc.pdfDocument.deleteTemp ];
+
+			return RemoteActionService.callRemoteAction("convertToPdf", args, function (result)
+			{
+				svc.finishPdfConversion(result);
+				svc.pdfViewDialog.visible = true;
+			})
+			.catch(function(error) {
+				//error handler
+				console.error("TabService.convertToPdf error", error.message, error);
+				svc.finishPdfConversion();
+				ToastService.toast(error.message, "error", 0);
+			});
+		};
+
+		//reset UI after PDF conversion
+		svc.finishPdfConversion = function(pdfContentVersionId)
+		{
+			svc.pdfContentVersionId = pdfContentVersionId;
+			svc.converting = $rootScope.printMode = false;
+			svc.pdfDialog.visible = false;
+			svc.pdfDialog.progress = "";
+			svc.pdfDialog.conversionTime = new Date() - svc.pdfDialog.conversionStartTime;
+			console.log("Form Converted to PDF in ", svc.pdfDialog.conversionTime / 1000, "s");
+			if(svc.editable)
+				$timeout( () => svc.toggleReadOnly(false));
+		};
+
+		//function called when cancelling or closing PDF dialog during conversion
+		svc.cancelConvertToPdf = function(containerId)
+		{
+			svc.finishPdfConversion();
+
+			//delete temporary HTML documents
+			console.warn("PDF conversion cancelled.");
+			if(svc.pdfDocument.deleteTemp)
+				return svc.deleteTempHtml(containerId);
+		};
+
+		//save read only HTML elements in Documents
+		svc.saveHtmlDocument = function(containerId, i, saveNext, saveInLibrary)
+		{
+			//if cancel has been pressed: stop conversion
+			if(!svc.pdfDialog.visible)
+				return svc.cancelConvertToPdf(containerId);
+
+			var isLast = i == svc.nbElements;
+			console.log("TabService saveHtmlDocument", i, "of", svc.nbElements, isLast ?  "last" : "");
+			svc.pdfDialog.progress = "Converting... " + Math.round(100 * i /  svc.nbElements) + "%";
+
+			if(isLast &amp;&amp; saveInLibrary)
+				return svc.convertToPdf(containerId);
+
+			if(isLast)
+			{
+				//trigger click on download link download PDF
+				var pdfDownloadLink = angular.element("a#pdfDownloadLink");
+				if(Array.isNotEmpty(pdfDownloadLink))
+					pdfDownloadLink[0].click();
+
+				svc.finishPdfConversion();
+
+				//delete temporary HTML after PDF is loaded
+				if(svc.pdfDocument.deleteTemp)
+					$timeout(() => svc.deleteTempHtml(containerId), 5000);
+				return;
+			}
+
+			//refresh element html
+			var saveNextCallback = () => svc.saveHtmlDocument(containerId, i + 1, saveNext, saveInLibrary);
+			var doc = { id: null, index: i, element: svc.pageElements[i], outerHtml: svc.pageElements[i].outerHTML };
+			doc.html = svc.getPageElementHtml(svc.pageElements[i]);
+			svc.htmlDocs.push(doc);
+			return RemoteActionService.callRemoteAction("saveHtmlDocument", [containerId, i, svc.nbElements, doc.html ], "id", doc, saveNextCallback);
+		};
+
+		//outer HTML stripped from everything not useful for PDF converter
+		svc.getPageElementHtml = function(element)
+		{
+			if(!element) return element;
+
+			var docHtml = element.outerHTML || element;
+			docHtml = docHtml.replace(/&lt;!--(.*?)-->/gm, "");            // remove angular HTML comments
+			docHtml = docHtml.replace(/&lt;tr.*>[\n\r\s]+&lt;\/tr>/gm, "");   // if &lt;tr> empty? delete it (for pdf conversion)
+			docHtml = docHtml.replace(/\t/g, "");                       // remove tab characters
+			docHtml = docHtml.replace(/\n\n+/g, "\n");                   // replace multiple \n with single
+			//docHtml = docHtml.replace(/ng-(.*?)="[^\"]*"/g, "");       // remove angular ng- attributes
+			return docHtml;
+		};
+
+		svc.saveHtmlDocuments = function(containerId, editable, saveInLibrary)
+		{
+			svc.pdfDialog.conversionStartTime = new Date();
+			svc.editable = editable;
+			if(editable)
+				svc.toggleReadOnly(true);
+
+			$rootScope.printMode = 'PDF';
+			$timeout(() => svc.converting = saveInLibrary ? "save" : "open");
+			svc.htmlDocs = [];
+
+			return svc.loadAllTabs(false, function()
+			{
+				if(Array.isNotEmpty(ProductTestService.data.productTests)) {
+					//TODO: how many tests per page ?
+					ProductTestService.data.splitProductTests = ProductTestService.data.productTests.paginate(40);
+					console.log("splitting product test table", ProductTestService.data.splitProductTests);
+				}
+
+				$timeout(function() {
+					//move split product test tables outside the product test section, to send as separate documents
+					if(Array.isNotEmpty(ProductTestService.data.productTests)) {
+						var ptContainers = angular.element(".pt-container");
+						var parentForm = ptContainers.parents("form");
+						ptContainers.appendTo(parentForm);
+					}
+
+					//For PDF print mode: Transform card section column layout into HTML table
+					for(let i = 0; i &lt; Array.getLength(svc.tabs); i++)
+						for(let m = 0 ; m &lt; Array.getLength(svc.tabs[i].sections); m++)
+							svc.cardToTable(svc.tabs[i].sections[m]);
+
+					svc.pageElements = angular.element(pageElementSelector);
+					svc.nbElements = Array.getCount(svc.pageElements);
+					svc.saveHtmlDocument(containerId, 0, true, saveInLibrary);
+				});
+			});
+		};
+
+		svc.print = function(editable)
+		{
+			svc.editable = editable;
+			svc.printing = $rootScope.printMode = "HTML";
+			if(svc.editable)
+				svc.toggleReadOnly(true);
+
+			//if this is a product test form, and product tests are not loaded yet, load product test results data before conversion
+			if(settings.isProductTestForm &amp;&amp; Array.isEmpty(ProductTestService.data.productTests))
+				ProductTestService.loadData().then(doPrint);
+			else
+				doPrint();
+		};
+
+		function doPrint()
+		{
+			$timeout( () =>
+				svc.loadAllTabs(false, function() {
+					window.print();
+					svc.printing = $rootScope.printMode = false;
+					if(svc.editable)
+						svc.toggleReadOnly(false);
+				}),
+				200);
+		}
+
+		svc.openPdfLink = function(instanceId, format, orientation)
+		{
+			if(String.isEmpty(instanceId))
+				instanceId = containerInstanceId;
+			NavigationService.goToPage("FormViewPrintPDF", {id: instanceId, format: format, orientation: orientation }, "pdf");
+		};
+
+		svc.deleteTempHtml = function(instanceId) {
+			return RemoteActionService.callRemoteAction("deleteTempHtml", [instanceId], "nbDeleted", svc);
+		};
+
+		//For PDF print mode: Transform card section column layout into HTML table
+		//TODO : clone elements, keep original Card sections and hide them in @media print
+		// after PDF is done, remove temp tables
+		svc.cardToTable = function(section)
+		{
+			if(!section || section.type != "Card") return;
+
+			var jqSection = angular.element("#section_" + section.id + " section");
+			var jqTable = jqSection.find("table.pdf-card-to-table");
+
+			//if section has no elements, or all its elements have full width (single column): no need to convert to table
+			if(section.singleColumn || Array.isEmpty(section.elements))
+				return jqTable.remove();
+
+			jqTable.html('');
+
+			var jqRow     = angular.element("&lt;tr/>").appendTo(jqTable);
+			var jqElements = jqSection.find("div.formly-field");
+			var column = 0;
+			var rows = 1;
+
+			angular.forEach(section.elements, function(element, i)
+			{
+				var elCols = element.templateOptions.largeColumns;
+				//if too wide, make new row
+				if(column + elCols > MAX_COL) {
+					column = 0;
+					rows++;
+					jqRow = angular.element("&lt;tr/>").appendTo(jqTable);
+				}
+
+				var jqCol = angular.element("&lt;td colspan='" + elCols + "'/>").append(jqElements.eq(i).html());
+				jqRow.append(jqCol);
+				column += elCols;
+			});
+
+			console.log("cardToTable", section.id, rows);
+			return jqTable;
+		};
+
+		// -------------------------------------------------------------------------
+		// ------------------------- Form Debugging Functions ----------------------
+		// -------------------------------------------------------------------------
+
+		//get form element by tab, section and element index, or by question id
+		svc.getFormElement = function(tab, section, element)
+		{
+			//get by question id
+			if(tab in elementMap)
+				return elementMap[tab];
+
+			var t = svc.tabs[tab];
+			if(!t || !t.sections || section === undefined) return t;
+
+			var s = t.sections[section];
+			if(!s || !s.elements || element === undefined) return s;
+
+			return s.elements[element];
+		};
+
+		//get all form elements that have invalid format or required missing value
+		//include only elements that are editable and visible based on their dependencies
+		svc.getInvalidFields = function()
+		{
+			var allElements = svc.getAllFormElements();
+			return allElements.filter(function(element)
+			{
+				var $invalid = getVar("formControl.$invalid", element, false);
+				return element.templateOptions.showElement
+					&amp;&amp; svc.isEditable(element)
+					&amp;&amp; ($invalid || $rootScope.isRequiredFieldEmpty(element));
+			});
+		};
+
+		//get all form elements
+		svc.getAllFormElements = function()	{
+			return Object.values(elementMap);
+		};
+
+		svc.getFormElementByLabel = function(label) {
+			return svc.getAllFormElements().find(e => Array.in(label, [e.data.name, e.data.label], true) );
+		};
+
+		svc.getFormElementsByLabel = function(label) {
+			return svc.getAllFormElements().filter(e => Array.in(label, [e.data.name, e.data.label], true) );
+		};
+
+		svc.getFormElementsByType = function(type)
+		{
+			var types = String.split(type, ",", true, true);
+			return svc.getAllFormElements().filter(e => Array.in(e.type, types, true));
+		};
+
+		svc.getElementAnswers = function(elements, toMap)
+		{
+			if(Array.isEmpty(elements))
+				return elements;
+
+			if(!toMap)
+				return elements.map(el => svc.model[el.key]);
+
+			var answers = {};
+			angular.forEach(elements, function(el) {
+				answers[el.key] = svc.model[el.key];
+			});
+			return answers;
+		};
+
+		svc.getAnswersByType = function(type, toMap)
+		{
+			var elements = svc.getFormElementsByType(type);
+			return svc.getElementAnswers(elements, toMap);
+		};
+
+		svc.toggleReadOnly = function(ro, apply)
+		{
+			if(!angular.isDefined(ro))
+				ro = !$rootScope.forceReadOnly;
+
+			$rootScope.forceReadOnly = ro;
+			console.log("toggleReadOnly", ro);
+			for(let t = 0; t &lt; Array.getCount(svc.tabs); t++)
+				angular.forEach(svc.tabs[t].sections, section => section.readOnly = svc.isSectionReadOnly(section) );
+
+			if(apply)
+				$rootScope.$apply();
+
+			return ro;
+		};
+
+		//section is read-only if all its questions are read-only
+		svc.isSectionReadOnly = section => svc.isReadOnly() || Array.isEmpty(section.elements) || Array.every(section.elements, svc.isReadOnly);
+
+		//clear all answers but keep same model instance
+		svc.clearFormModel = function(model)
+		{
+			if(!model)
+				model = svc.model;
+
+			for(let questionId in model)
+			{
+				let element = svc.getFormElement(questionId);
+				if(questionId != "tables" &amp;&amp; element &amp;&amp; svc.isEditable(element) &amp;&amp; !Array.in(element.type, ["upload", "lab selection", "checkbox"]))
+					model[questionId] = null;
+			}
+
+			for(let sectionId in model.tables)
+				model.tables[sectionId] = [];
+
+			if(ProductTestService)
+				ProductTestService.clearTestResults();
+			return model;
+		};
+
+		//fill form with dummy values
+		svc.fillForm = function(model)
+		{
+			if(!model)
+				model = svc.model;
+
+			var changed = false;
+
+			angular.forEach(svc.getAllFormElements(), function(el, i)
+			{
+				if(String.isNotEmpty(model[el.key]) || svc.isReadOnly(el)) return;
+
+				var val = svc.getDummyValue(el, i);
+				if(String.isNotEmpty(val)) {
+					model[el.key] = val;
+					changed = true;
+				}
+			});
+
+			if(changed)
+				svc.setFormDirty();
+		};
+
+		svc.getDummyValue = function(element, i)
+		{
+			if(!element) return null;
+
+			if(element.type == "checkbox")
+				return true;
+
+			if(element.type == "number")
+				return i;
+
+			if(element.type == "text")
+				return getVar("data.label", element);
+
+			if(element.type == "long text")
+				return getVar("data.label", element) + "\n" + getVar("data.label", element);
+
+			if(Array.in(element.type, ["date", "datetime"]))
+				return new Date().getTime().toString();
+
+			if(Array.in(element.type, ["radio", "picklist", "multi-picklist", "search", "multi-search"]))
+				return getVar("templateOptions.options.0.id", element);
+		};
+
+		// --------------------------------------------------------------------------
+		// ------------------------ Form Dependency Functions -----------------------
+		// --------------------------------------------------------------------------
+		svc.isElementLoaded = function(elementId) {
+			return elementId in elementMap;
+		};
+
+		svc.getElementTab = function(element) {
+			if(angular.isString(element))
+				element = elementMap[element];
+
+			return svc.tabs[element.data.tabIndex];
+		};
+
+		svc.getElementSection = function(element) {
+			if(angular.isString(element))
+				element = elementMap[element];
+
+			var tab = svc.getElementTab(element);
+			return tab &amp;&amp; tab.sections[element.data.sectionIndex];
+		};
+
+		svc.getSectionType = function(element) {
+			if(angular.isString(element))
+				element = elementMap[element];
+			return getVar("data.sectionType", element);
+		};
+
+		svc.isElementInTable = function(element) {
+			return svc.getSectionType(element) == "Table";
+		};
+
+		svc.isElementInCard = function(element) {
+			return svc.getSectionType(element) == "Card";
+		};
+
+		svc.getElementLabel = function(element)
+		{
+			if(angular.isString(element))
+				element = elementMap[element];
+			if(!element) return "";
+			var label = element.data.label || element.data.name;
+			return " " + label.replace(/ /g, "_") + " ";
+		};
+
+		svc.getFormulaLabel = function(element)
+		{
+			if(angular.isString(element))
+				element = elementMap[element];
+
+			if(!svc.isFormula(element)) return "";
+
+			var formulaLabel = element.data.formula;
+			for(let i = 0; i &lt; Array.getLength(element.data.parentQuestionIds); i++)
+			{
+				var parentId = element.data.parentQuestionIds[i];
+				if(!elementMap[parentId])
+					return "";
+
+				formulaLabel = formulaLabel.replace(parentId, svc.getElementLabel);
+			}
+
+			return element.data.formulaLabel = "= " + formulaLabel;
+		};
+
+		$rootScope.getFormatClasses = function(element)
+		{
+			var templateOptions = element &amp;&amp; element.templateOptions || element;
+			if(!templateOptions || String.isEmpty(templateOptions.questionFormat))
+				return;
+
+			var formats = templateOptions.questionFormat.split(";");
+			var classes = "";
+			for(let i = 0; i &lt; formats.length; i++)
+				if(String.isNotEmpty(formats[i]))
+					classes += " text-format-" + formats[i].toLowerCase();
+
+			return classes;
+		};
+
+		$rootScope.getElementPopover = svc.getElementPopover = function(element)
+		{
+			if(angular.isString(element))
+				element = elementMap[element];
+			if(!element) return "";
+
+			if(element.templateOptions.popover)
+				return element.templateOptions.popover;
+
+			if(svc.isFormula(element) &amp;&amp; !element.data.formulaLabel)
+				svc.getFormulaLabel(element);
+
+			const today = "Today";
+
+			var min = element.templateOptions.min;
+			var sign = min > 0 ? " +" : " ";
+			if(angular.isDefined(min) &amp;&amp; String.startsWith(element.type, "date"))
+				min = min == 0 ? today : today + sign + String.plural(min, "day");
+			min = String.isEmpty(min) ? "" : "minimum: " + min;
+
+			var max = element.templateOptions.max;
+			sign = max > 0 ? " +" : " ";
+			if(angular.isDefined(max) &amp;&amp; String.startsWith(element.type, "date"))
+				max = max == 0 ? today : today + sign + String.plural(max, "day");
+			max = String.isEmpty(max) ? "" : "maximum: " + max;
+
+			return element.templateOptions.popover = [ element.templateOptions.description, element.data.formulaLabel, min, max ].filter(String.isNotEmpty).join("\n");
+		};
+
+		//============ Dependency functions for show / hide / formula
+		svc.initDependencies = function (element)
+		{
+			if(!element || String.isEmpty(element.key))
+				return;
+
+			//if this element was not loaded yet but used in a formula: attach event
+			if(parentDependencyMap &amp;&amp; parentDependencyMap[element.key])
+			{
+				element.templateOptions.onChange = svc.onParentValueChange;
+				console.log("setting onChange", element.key, element.data.name);
+			}
+
+			//if no dependency : always show element
+			if (String.isEmpty(element.data.dependentAction) || String.isEmpty(element.data.dependentQuestionId))
+			{
+				element.templateOptions.showElement = true;
+				return;
+			}
+
+			// register the current question on the dependency map
+			// add the question id as the key
+			// a question cannot depend on itself
+			if(!element.data.parentQuestionIds) {
+				var parentQuestionIds = [];
+				var pids = element.data.dependentQuestionId.split(';');
+				for(let i = 0; i &lt; pids.length; i++)
+				{
+					var id = pids[i].trim();
+					if(String.isNotEmpty(id) &amp;&amp; id != element.key)
+						parentQuestionIds.push(id);
+				}
+
+				element.data.parentQuestionIds = parentQuestionIds;
+			}
+
+			//Build dependency maps
+			//dependencyMap[childId]: depends on parent question Ids
+			dependencyMap[element.key] = {
+				parentQuestionIds: element.data.parentQuestionIds,
+				dependentTestAnswer: element.data.dependentTestAnswer,
+				dependentAction: element.data.dependentAction
+			};
+
+			//parentDependencyMap[parentId]: when value changes: refresh child question ids
+			for(let i = 0; i &lt; element.data.parentQuestionIds.length; i++)
+			{
+				var parentId = element.data.parentQuestionIds[i];
+				if(!parentDependencyMap[parentId])
+					parentDependencyMap[parentId] = [];
+
+				parentDependencyMap[parentId].push(element.key);
+
+				var parentElement = elementMap[parentId];
+				if(!parentElement)
+					console.log('parentElement', parentId, 'not loaded yet.');
+
+				//set onchange event for parent element(s)
+				if(parentElement &amp;&amp; (svc.isFormula(element) || svc.isDependentPicklist(element)) )
+				{
+					if(svc.isElementInTable(parentElement))
+						parentElement.change = svc.onTableValueChange; //Table: set slds-table column.change
+					else
+						parentElement.templateOptions.onChange = svc.onParentValueChange; //Card: set formly element onChange
+					console.log("setting onChange", parentElement.key, parentElement.data.name);
+
+					if(svc.isDependentPicklist(element))
+						svc.refreshDependentPicklists(parentElement.key);
+					else if(parentElement.data.tabIndex != element.data.tabIndex)
+						svc.refreshTab(parentElement.data.tabIndex);
+				}
+			}
+
+			if(element.data.dependentAction == 'Show' || element.data.dependentAction == 'Hide')
+				element.expressionProperties['templateOptions.showElement'] = shouldShowElement;
+			else
+				element.templateOptions.showElement = true;
+
+			if(element.data.dependentAction == 'Require')
+				element.expressionProperties['templateOptions.required'] = shouldRequireElement;
+			else if(svc.isFormula(element))
+			{
+				element.templateOptions.readOnly = true;
+				if(svc.isElementInCard(element)) {
+					svc.calculateFormula(element.key);
+				}
+			}
+		};
+
+		//AP-423: if parent element tab was already loaded, need to refresh the tab after onParentValueChange
+		svc.refreshTab = function(index)
+		{
+			//save tab before replacing it with dummy tab
+			//avoid refreshing same tab multiple times
+			var tab = svc.tabs[index];
+			if(!tab || svc.parentTabs[index]) return;
+
+			console.log("refreshing parent tab:", index, tab.title);
+			svc.parentTabs[index] = tab;
+			svc.tabs[index] = { id: tab.id, title: tab.title };
+
+			//use timeout to detect tab change / refresh before restoring original tab
+			$timeout(function() {
+				svc.tabs[index] = tab;
+				svc.parentTabs[index] = null; //clear when tab is restored
+			}, 0);
+		};
+
+		//Element child-parent question mapping for formula calculation
+		//when parent value changes: refresh all child question answers that depend on this parent
+
+		//when the parent question in a card section: recalculate children values in the all the rows
+		svc.onParentValueChange = function($viewValue, element, scope)
+		{
+			var childIds = parentDependencyMap[element.key];
+			console.log('onParentValueChange:', element.key, element.data.name, $viewValue, childIds);
+			var childOptionList = null;
+
+			//if parent dependency is formula: refresh all child question values that depend on this parent
+			for(let j = 0; j &lt; Array.getLength(childIds[j]); j++)
+			{
+				let childElement = elementMap[childIds[j]];
+				if(!childElement) continue;
+
+				if(svc.isFormula(childElement))
+					svc.refreshElementFormula(childIds[j]);
+				else if(svc.isDependentPicklist(childElement) &amp;&amp; String.isNotEmpty(childElement.templateOptions.optionListName))
+					childOptionList = childElement.templateOptions.optionListName;
+			}
+
+			//if parent dependency is OptionList: reload option list of all child questions
+			if(childOptionList)
+				svc.refreshDependentPicklists(element.key, childOptionList, true);
+		};
+
+		//when the parent question in a table section: recalculate children values in the current row only
+		//this function is passed as col.change for table columns that are used as parent of formula
+		svc.onTableValueChange = function(row, col)
+		{
+			var childIds = parentDependencyMap[col.key];
+			console.log('onTableValueChange:', row.$rowindex, col.key, childIds, row);
+
+			//refresh all child question values that depend on this parent
+			for(let j = 0; j &lt; Array.getLength(childIds); j++){
+				svc.calculateFormula(childIds[j], row);
+			}
+		};
+
+		svc.refreshDependentPicklists = function(elementId, childOptionList, clear, model)
+		{
+			var element = elementMap[elementId];
+			var childIds = parentDependencyMap[elementId];
+			if(!elementId || !element || Array.isEmpty(childIds)) return;
+
+			if(!model) model = svc.model;
+			var parentValue = model[elementId];
+
+			var dependentPicklists = childIds.map(id => elementMap[id]).filter(svc.isDependentPicklist);
+			if(Array.isEmpty(dependentPicklists)) return;
+
+			if(!childOptionList)
+				childOptionList = dependentPicklists[0].templateOptions.optionListName;
+
+			if(String.isEmpty(parentValue))
+			{
+				//if parent dependency is OptionList and empty parent value: clear options
+				angular.forEach(dependentPicklists, function(picklist)
+				{
+					console.log("clearing options for: ", picklist.key);
+					picklist.templateOptions.options = [];
+					if(clear)
+						model[picklist.key] = null;
+				});
+			}
+			else if(childOptionList)
+			{
+				//if parent dependency is OptionList: reload option list of all child questions
+				var optionListName = String.substringBefore(childOptionList, "/") + "/" + parentValue;
+				RemoteActionService.callRemoteAction("getItemList", [optionListName, ""], function(result)
+				{
+					angular.forEach(dependentPicklists, function(picklist)
+					{
+						console.log("changing options for: ", picklist.key, result);
+						picklist.templateOptions.options = result;
+						if(clear)
+							model[picklist.key] = null;
+					});
+				});
+			}
+		};
+
+		svc.refreshElementFormula = function(elementId, model)
+		{
+			var element = elementMap[elementId];
+			if(!element || !dependencyMap[elementId]) return;
+
+			if(!model) model = svc.model;
+
+			//in Card section: refresh model[elementId] value
+			if(svc.isElementInCard(element))
+				svc.calculateFormula(elementId, model);
+
+				//in Table section: refresh row[elementId] value, for all rows in the section
+			else
+			{
+				var childElement = elementMap[elementId];
+				var sectionId = getVar("data.sectionId", childElement);
+				var tableRows = getVar(sectionId, model.tables);
+
+				for(let m = 0; m &lt; Array.getLength(tableRows); m++)
+					svc.calculateFormula(elementId, tableRows[m]);
+			}
+		};
+
+		svc.replaceLinks = function(html)
+		{
+			if(!$rootScope.printMode) return html; //not needed if not in print mode
+			return html.replace(/&lt;\/a/g, "&lt;/span").replace(/&lt;a/g, "&lt;span");
+		};
+
+		svc.calculateFormula = function(elementId, row)
+		{
+			var dependency = dependencyMap[elementId];
+			if(Array.isEmpty(dependency)) return;
+
+			if(!row || angular.isNumber(row))
+				row = svc.model;
+
+			var element = elementMap[elementId];
+			var formulaEquation = element.data.formula;
+			if(String.isEmpty(formulaEquation)) return;
+
+			formulaEquation = formulaEquation.replace(/\r|\n/g, " ").toLowerCase();
+			var formulaResult = 0;
+			var formulaScope = {};
+
+			for(let i = 0; i &lt; dependency.parentQuestionIds.length; i++)
+			{
+				let parentId = dependency.parentQuestionIds[i];
+				let parentElement = elementMap[parentId];
+				if(String.isEmpty(parentId) || !parentElement)
+					continue;
+
+				//set formula scope symbols: keys = question global id and name without spaces
+				let parentValue = row[parentId] || svc.model[parentId] || 0;
+
+				//get picklist / radio option value (instead of option id)
+				if(Array.isNotEmpty(parentElement.templateOptions.options)) {
+					var opt = CommonUtils.getOptionByValue(parentElement.templateOptions.options, parentValue);
+					if(opt) parentValue = opt.value.toLowerCase();
+				}
+				//if value is numeric: convert it to number
+				if(!isNaN(parentValue))
+					parentValue = Number(parentValue);
+
+				formulaScope[parentId.toLowerCase()] = parentValue;
+				if(String.isNotEmpty(parentElement.data.name)) {
+					var parentName = parentElement.data.name.replaceAll(" ", "").toLowerCase();
+					formulaScope[parentName] = parentValue;
+				}
+			}
+
+			try {
+				formulaResult = window.math.eval(formulaEquation, formulaScope);
+
+				//if(isNaN(formulaResult)) formulaResult = null;
+				if(formulaResult % 1)
+					formulaResult = formulaResult.toFixed(2);
+
+				row[elementId] = formulaResult;
+			}
+			catch(err) {
+				console.warn("Math.eval", err);
+			}
+
+			console.log("Formula result = ", formulaResult, "\n", elementId, element.data.name, formulaEquation, formulaScope);
+
+			//refresh recursively if this child question is used as parent in other formula questions
+			if(parentDependencyMap[elementId])
+			{
+				if(svc.isElementInTable(elementId))
+					svc.onTableValueChange(row, element);
+				else
+					svc.onParentValueChange(formulaResult, element);
+			}
+
+			return formulaResult;
+		};
+
+		/** @method shouldShowElement
+@description kicks off the dependency test it the args passed by the espressionproperites of anuglary-formly
+@param {AnyType} $viewValue - the current view value of the input as passed in by Angular Formly
+@param {AnyType} $modelValue - the current model value of the input as passed in by Angular Formly
+@param {Object} scope - the current scope from the form element perspective.
+@return {Boolean}
+*/
+		function shouldShowElement($viewValue, $modelValue, scope)
+		{
+			var compliant = true;
+
+			if (dependencyMap.hasOwnProperty(scope.options.key))
+				compliant = testDependencyMap(scope.options.key, compliant, scope);
+
+			//clean value of question if it is hidden, so if it is parent for other questions they are also will be influenced.
+			if (!compliant &amp;&amp; scope.model[scope.options.key])
+				scope.model[scope.options.key] = undefined;
+
+			//console.log("shouldShowElement", scope.options.key, scope.options.data.name, compliant);
+
+			//DE8367: Hide blank space for dependent question answer = if question is hidden, hide spacer(s) just before it
+			scope.options.hide = !compliant;
+			for(let i = 0; i &lt; Array.getCount(scope.to.spacersBefore); i++)
+				scope.to.spacersBefore[i].hide = !compliant;
+			return compliant;
+		}
+
+		/** @method shouldRequireElement
+@description kicks off the dependency test it the args passed by the espressionproperites of anuglary-formly
+@param {AnyType} $viewValue - the current view value of the input as passed in by Angular Formly
+@param {AnyType} $modelValue - the current model value of the input as passed in by Angular Formly
+@param {Object} scope - the current scope from the form element perspective.
+@return {Boolean}
+*/
+		function shouldRequireElement($viewValue, $modelValue, scope)
+		{
+			var compliant = false;
+
+			if (dependencyMap.hasOwnProperty(scope.options.key))
+				compliant = testDependencyMap(scope.options.key, compliant, scope);
+
+			//console.log("shouldRequireElement", scope.options.key, scope.options.data.name, compliantRequire);
+			return compliant;
+		}
+
+		//element validator functions
+
+		//is required field invalid because empty ?
+		function isFieldInvalid(element)
+		{
+			var fc = element.formControl || element;
+			return fc &amp;&amp; fc.$invalid;
+		};
+
+		//is required field invalid because empty ? options = form element
+		function isRequiredFieldEmpty(element)
+		{
+			return element &amp;&amp; element.templateOptions.required &amp;&amp; isValueMissing(element);
+		};
+
+		function isValueMissing(element)
+		{
+			if(svc.isElementInCard(element))
+				return isAnswerValueEmpty(element, svc.model);
+
+			//table: find a table row where value is missing for this column
+			var rows = getVar(["tables", element.data.sectionId], svc.model);
+			if(Array.isEmpty(rows))
+				return true;
+
+			return rows.some(row => isAnswerValueEmpty(element, row));
+		};
+
+		/** @method isAnswerValueEmpty
+@description checks if the answer value is empty for upload or checkbox questions
+@param {Object} element - the element object
+@param {Object} model - the current model
+@return {Boolean}
+*/
+		function isAnswerValueEmpty(element, model)
+		{
+			if(element.type == "label") //labels have no answer - always empty but never missing
+				return false;
+
+			if(Array.in(element.type, ["product test", "product test results"]))
+				return ProductTestService.validateTestResults();
+
+			if(element.type == "upload")
+				return !model[element.key] || Array.isEmpty(model[element.key].answerDocRefs);
+
+			if(element.type == "checkbox")
+				return !model[element.key];
+
+			return String.isEmpty(model[element.key]);
+		}
+
+		/** @method isFileSelected
+@description checks if the file is selected for required upload field
+@param {AnyType} $viewValue - the current view value of the input as passed in by Angular Formly
+@param {AnyType} $modelValue - the current model value of the input as passed in by Angular Formly
+@param {Object} scope - the current scope from the form element perspective.
+@return {Boolean}
+*/
+
+		function isFileSelected($viewValue, $modelValue, scope)
+		{
+			var value = $viewValue || $modelValue;
+			var isRequired = scope.$parent &amp;&amp; scope.$parent.to &amp;&amp; scope.$parent.to.required;
+			return !isRequired || value > 0;
+		}
+
+		/** @method isValid
+@description the default regex function template
+@param {AnyType} $viewValue - the current view value of the input as passed in by Angular Formly
+@param {AnyType} $modelValue - the current model value of the input as passed in by Angular Formly
+@param {Object} scope - the current scope from the form element perspective.
+@return {Boolean}
+*/
+		function isValid($viewValue, $modelValue, scope)
+		{
+			if(scope.options.type == "checkbox")
+				return !scope.to.required || $modelValue;
+
+			if(!angular.isDefined($viewValue) || String.isEmpty(scope.options.data.answerRegex))
+				return true;
+
+			var re = new RegExp(scope.options.data.answerRegex, scope.options.data.answerRegexFlag);
+			return re.test($viewValue);
+		}
+
+		/** @method testDependencyMap
+@description Tests the current dependency settings based on the value of the map
+@param {String} questionId - question id of the dependent question
+@param {Boolean} compliant - true or false
+@param {Object} scope - the current scope from the form element perspective.
+@return {Boolean}
+*/
+		function testDependencyMap(questionId, compliant, scope)
+		{
+			var dependency = dependencyMap[questionId];
+			//console.log("testDependencyMap", questionId, compliant, dependency);
+			if(!dependency || Array.isEmpty(dependency.parentQuestionIds))
+				return compliant;
+
+			//child question could have multiple parents
+			for (var i = 0; i &lt; dependency.parentQuestionIds.length; i++)
+			{
+				var parentId = dependency.parentQuestionIds[i];
+				if (String.isEmpty(parentId)) continue;
+
+				var check = checkParentDependency(scope, parentId, dependency);
+				compliant = dependency.dependentAction === 'Hide' ? !check : check;
+				if(check)
+					break;
+
+				// recursively crawls up the dependecy map until a dependent parent do longer exists
+				if (compliant &amp;&amp; dependencyMap.hasOwnProperty(parentId))
+					return testDependencyMap(parentId, compliant, scope);
+			}
+
+			// will only make it to this return once recursion is exhausted
+			return compliant;
+		}
+
+		/** @method checkParentDependency
+@description check if the parent answer values match the dependency
+@param {Object} scope - the current scope from the form element perspective.
+@param {String} parentId - question id of the parent question
+@param {Object} dependency - dependency object containing dependent action , dependent test answer, parent question ids
+@return {Boolean} - true or false
+*/
+		function checkParentDependency(scope, parentId, dependency)
+		{
+			var answerValue = parentId in scope.model ? scope.model[parentId] : svc.model[parentId];
+			//check if answer value matches dependency
+			if(String.equals(answerValue, dependency.dependentTestAnswer))
+				return true;
+
+			//check if parent selected option name or id matches dependency
+			var parentElement = elementMap[parentId];
+			var options = parentElement &amp;&amp; parentElement.templateOptions &amp;&amp; parentElement.templateOptions.options;
+			//create maps of answer options by id and name for dependency checks
+			if(options &amp;&amp; !options.by)
+				CommonUtils.indexOptions(options);
+
+			if(!options || !options.by)
+				return false;
+
+			var dependentOption = options.by.name[dependency.dependentTestAnswer] || options.by.id[dependency.dependentTestAnswer];
+			if(!dependentOption)
+				return false;
+
+			return Array.in(answerValue, [dependentOption.value, dependentOption.id, dependentOption.name], true);
+		}
+
+	} // end TabService
+}; //end module.exports
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

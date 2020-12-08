@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/services/CommonUtils.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/services/CommonUtils.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/services/CommonUtils
+
+@description angular service that contains various utility functions to handle variable and object fields and namespaces.
+*/
+
+module.exports = function (ngModule)
+{
+	ngModule.service('CommonUtils', CommonUtil);
+	CommonUtil.$inject = ['$compile', '$http'];
+	function CommonUtil  ( $compile,   $http )
+	{
+		var svc = this;
+		window.CommonUtils = this;
+
+		const FILE_SIZE_UNITS = ["Bytes", "KB", "MB", "GB", "TB", "PB"];
+
+		const OPTION_VALUE_FIELDS   = svc.OPTION_VALUE_FIELDS   = [ "value", "id", "Id" ];
+		const OPTION_DISPLAY_FIELDS = svc.OPTION_DISPLAY_FIELDS = [ "text", "label", "name", "Name", "title", "Title", "value", "id", "Id"];
+
+		svc.httpGet = $http.get;
+		svc.httpPost = $http.post;
+
+		//======== variable get / set functions
+
+		/** @method isMissing
+@description tests if a variable is undefined or null
+@param variable {any} variable to test
+@return {boolean} true if variable is undefined or null, false otherwise
+*/
+		svc.isMissing = function(variable)
+		{
+			return variable === null || variable === undefined || typeof variable === "undefined";
+		};
+
+		/** @method valueOrDefault
+@description tests if a variable is undefined or null
+
+@param variable {any} variable to test
+@param defaultValue {any} default Value to return if variable is null or undefined
+
+@return {any} variable or defaultValue
+*/
+		svc.valueOrDefault = function(variable, defaultValue)
+		{
+			return svc.isMissing(variable) ? defaultValue : variable;
+		};
+
+		/** @method isDefined
+@description tests if a variable name path is defined
+@param variable {String|Array} variable name ("object1.object2.name" or ["object1","object2","name"])
+@param ctx {optional|Object} context object (by default: current window object)
+
+@return {Boolean} true if variable is defined, false otherwise
+*/
+		svc.isDefined = function(variable, ctx)
+		{
+			if(String.isEmpty(variable)) return ctx;
+			return !svc.isMissing(svc.getVar(variable, ctx));
+		};
+
+		/** @method coalesce
+@description get first non-null and non-undefined argument (or undefined)
+@param variable variable name ("object1.object2.name" or ["object1","object2","name"])
+@return first non-null and non-undefined argument (undefined if all are null or undefined)
+*/
+
+		svc.coalesce = function()
+		{
+			for(var i = 0; i &lt; arguments.length; i++)
+				if(!svc.isMissing(arguments[i]))
+					return arguments[i];
+		};
+
+		/** @method getVar
+@description get variable value inside context object.
+&lt;br/>For custom SObject fields, finds field with and without namespace automatically.
+
+@param variable {String|Array} variable name ("object1.object2.name" or ["object1","object2","name"])
+@param ctx {optional|Object} context object (by default: current window object)
+@param defaultValue {any} default Value to return if variable is null or undefined
+
+@return {any} variable value is defined and not null, defaultValue otherwise
+
+@example
+//without context
+CommonUtils.getVar("product.id")
+=> window.product.id
+
+@example
+//with context
+CommonUtils.getVar("product.id", vm)
+=> vm.product.id
+
+@example
+//with array element
+CommonUtils.getVar("product.attributes.0.id", vm)
+=> vm.product.attributes[0].id
+*/
+		svc.getVar = function(variable, ctx, defaultValue)
+		{
+			if(!ctx) ctx = window;
+			if(String.isEmpty(variable)) return ctx;
+
+			var arr = angular.isArray(variable) ? variable : variable.toString().split(".");
+			for(var i = 0; i &lt; arr.length; i++)
+			{
+				if(svc.isMissing(ctx)) return defaultValue;
+				if(String.isEmpty(arr[i])) continue;
+
+				var name = arr[i];
+				var prefixedName = svc.addNamespacePrefix(name);
+
+				if(prefixedName != name &amp;&amp; !svc.isMissing(ctx[prefixedName]))
+					ctx = ctx[prefixedName];
+				else
+					ctx = ctx[name];
+			}
+
+			if(svc.isMissing(ctx)) return defaultValue;
+			return ctx;
+		};
+
+		//get first non null/undefined variable
+		svc.getFirstVar = function(variables, ctx, defaultValue)
+		{
+			variables = angular.isArray(variables) ? variables : variables.toString().split("|");
+			for(var i = 0; i &lt; variables.length; i++) {
+				var value = svc.getVar(variables[i], ctx);
+				if(!svc.isMissing(value))
+					return value;
+			}
+			return defaultValue;
+		};
+
+		/** @method getParentVar
+@description get parent variable value inside context object.
+&lt;br/>For custom SObject fields, finds field with and without namespace automatically.
+
+@param variable {String|Array} variable name ("object1.object2.name" or ["object1","object2","name"])
+@param ctx {optional|Object} context object (by default: current window object)
+@param defaultValue {any} default Value to return if variable is null or undefined
+
+@return {any} variable value is defined and not null, defaultValue otherwise
+
+@example
+//without context
+CommonUtils.getParentVar("product.id")
+=> window.product
+
+@example
+//with context
+CommonUtils.getParentVar("product.id", vm)
+=> vm.product
+
+@example
+//with array element
+CommonUtils.getParentVar("product.attributes.0.id", vm)
+=> vm.product.attributes[0]
+
+CommonUtils.getParentVar("product.attributes.0", vm)
+=> vm.product.attributes
+*/
+		svc.getParentVar = function(variable, ctx, defaultValue)
+		{
+			if(!ctx) ctx = window;
+			if(String.isEmpty(variable)) return ctx;
+
+			var arr = angular.isArray(variable) ? variable : variable.toString().split(".");
+			arr.pop(); //remove last path element to get parent
+			return svc.getVar(arr, ctx);
+		};
+
+		/** @method setVar
+@description sets a variable inside context object.
+&lt;br/>Creates all intermediate objects if they are not defined.
+
+@param variable {String} variable name path (object1.object2.name)
+@param value {any} value to assign to variable
+@param ctx {optional|Object} context object (by default: current window object)
+
+@return {any} parent object of the variable being set
+
+@example
+//without context
+CommonUtils.setVar("product.id", "012424")
+window.product.id = "012424"
+=> returns product { id: "012424" }
+
+@example
+//with context
+CommonUtils.setVar("product.id", "012424", vm)
+vm.product.id = "012424"
+=> returns product { id: "012424" }
+
+@example
+//with array element
+CommonUtils.setVar("product.attributes.0.id", "012424", vm)
+vm.product.attributes[0].id = "012424"
+=> returns vm.product.attributes[0] { id: "012424" }
+*/
+		svc.setVar = function(variable, value, ctx)
+		{
+			if(String.isEmpty(variable)) return ctx;
+			if(!ctx) ctx = window;
+
+			var arr = angular.isArray(variable) ? variable : variable.toString().split(".");
+			for(var i = 0; i &lt; arr.length - 1; i++)
+			{
+				if(!arr[i]) continue;
+
+				//TODO: create array if arr[i] is missing and arr[i+1] is numeric
+				if(svc.isMissing(ctx[arr[i]]))
+					ctx[arr[i]] = {};
+				ctx = ctx[arr[i]];
+			}
+			ctx[arr[i]] = value;
+
+			return ctx;
+		};
+
+		/** @method getPropertyValue
+@description Get value of an object property.
+Get variable value inside object, or result of function if property is a function
+&lt;br/>For custom SObject fields, finds field with and without namespace automatically.
+
+@param obj {Object} context object (by default: current window object)
+@param variable {String|Array} property name ("object1.object2.name" or ["object1","object2","name"])
+@param model {optonal|any} model to pass to function
+
+@return {any} result of getVar(property, obj)(model) if property is a function
+or property value otherwise
+
+@example
+// show loader on a button: can be a function or true of false, or by default false.
+vm.showLoader = function(action) {
+	return CommonUtils.getPropertyValue(action, "showLoader") || false;
+};
+*/
+		svc.getPropertyValue = function(obj, property, model)
+		{
+			if(!obj) return obj;
+
+			var prop = svc.getVar(property, obj);
+			if(angular.isFunction(prop))
+				return prop(model);
+
+			return prop;
+		};
+
+		//set list of children for each parent object in 1st list
+		//return parent list, modified with children added
+		Array.setChildren = svc.setChildren = function(parents, children, parentKeyField, childGroupField, childListField)
+		{
+			if(Array.isEmpty(parents) || Array.isEmpty(children))
+				return parents;
+
+			var parentMap   = Array.indexBy(parents,  parentKeyField);
+			var childrenMap = Array.groupBy(children, childGroupField);
+			for(var key in childrenMap) {
+				if(parentMap[key])
+					svc.setVar(childListField, childrenMap[key], parentMap[key]);
+			}
+			return parents;
+		};
+
+		svc.renameField = function (obj, oldKey, newKey)
+		{
+			if(Object.isEmpty(obj) || String.isEmpty(oldKey) || oldKey === newKey) return obj;
+
+			if(angular.isArray(obj))
+				return obj.map(el => svc.renameField(el, oldKey, newKey));
+
+			var value = svc.getVar(oldKey, obj);
+			delete obj[oldKey];
+			if(String.isNotEmpty(newKey) &amp;&amp; angular.isDefined(value))
+				svc.setVar(newKey, value, obj);
+
+			return obj;
+		};
+
+		svc.renameFields = function (obj, fieldMap)
+		{
+			if(Object.isEmpty(obj) || Object.isEmpty(fieldMap)) return obj;
+
+			if(angular.isArray(obj))
+				return obj.map(el => svc.renameFields(el, fieldMap));
+
+			for(let key in fieldMap)
+				svc.renameField(obj, key, fieldMap[key]);
+			return obj;
+		};
+
+		svc.remap = function (obj, keyConvert)
+		{
+			if(Object.isEmpty(obj) || Object.isEmpty(keyConvert))
+				return obj;
+
+			if(angular.isArray(obj))
+				return obj.map(el => svc.remap(el, keyConvert));
+
+			if(angular.isString(keyConvert))
+				return Object.map(obj, val => svc.getVar(keyConvert, val));
+
+			var newObj = {};
+
+			if(angular.isFunction(keyConvert)){
+				for(var key in obj) {
+					var newKey = keyConvert(key);
+					if(!newKey) continue;
+
+					var value = svc.getVar(key, obj);
+					if(angular.isDefined(value))
+						svc.setVar(newKey, value, newObj);
+				}
+			}
+			else if(angular.isObject(keyConvert)){
+				for(var newKey in keyConvert) {
+					var key = keyConvert[newKey];
+					if(!key) continue;
+
+					var value = angular.isFunction(key) ? key(obj, newObj) : svc.getFirstVar(key, obj);
+					if(angular.isDefined(value))
+						svc.setVar(newKey, value, newObj);
+				}
+			}
+
+			return newObj;
+		};
+
+		/** @method isJsonString
+@description tests if a variable is a string that can be parsed as JSON
+@param value {String|Array} variable
+@return {Boolean} true if variable is defined, false otherwise
+*/
+		svc.isJsonString = function(value)
+		{
+			if(!angular.isString(value) || String.isBlank(value))
+				return false;
+
+			return !isNaN(value)
+				|| value === "null" || value === "undefined"
+				|| value.startsWith("{") &amp;&amp; value.endsWith("}")
+				|| value.startsWith("[") &amp;&amp; value.endsWith("]")
+				|| value.startsWith('"') &amp;&amp; value.endsWith('"');
+		};
+
+		/** @method getLabel
+@description Get property label from a variable name
+&lt;br/>Example: "Product__c.Modified_Date__c" => "product modified date"
+
+@param variable {String} property name ("Product__c.Modified_Date__c")
+@param cleanup {optional|Boolean} do additional name cleanup and capitalize if true
+
+@return {string} readable label
+
+@example
+//single level
+Container_Global_Id__c => Container Global Id
+
+@example
+//multiple levels
+Product__c.Modified_Date__c => Product Modified Date
+*/
+		svc.getLabel = function(variable, cleanup)
+		{
+			if(String.isBlank(variable)) return "";
+
+			var label = variable.toString().trim().replace(/([a-z])([A-Z])/g, function(match, a, A){ return a + ' ' + A; })
+				.replace(/__c/g, '')
+				.replace(/__r/g, '')
+				.replace(/[_\.]/g, ' ');
+
+			if(!cleanup)
+				return label;
+
+			var words = label.split(/\s/).filter(isNaN);
+			//remove duplicate words
+			return words.distinct(p=> p.toLowerCase()).map(p => p.capitalize()).join(" ");
+		};
+
+		/** @method indexOptions
+@description Create maps of answer options by Id, Value and Name for dependency checks.
+&lt;br/>Used to access option item by value instantly in forms multi-picklists / search components
+@see module:common/services/CommonUtils~getOptionByValue
+
+@param variable {object[]} list of options
+@param cleanup {optional|Boolean} do additional name cleanup and capitalize if true
+
+@return {object[]} options, modified (added by.id, by.name, by.value maps)
+*/
+		svc.indexOptions = function(options)
+		{
+			if(Array.isEmpty(options))         return options;
+
+			if(!options.by)          options.by          = {};
+			if(!options.by.id)       options.by.id       = options.indexBy("id");
+			if(!options.by.name)     options.by.name     = options.indexBy("name");
+			if(!options.by.value)    options.by.value    = options.indexBy("value");
+			if(!options.by.globalId) options.by.globalId = options.indexBy("globalId");
+
+			return options;
+		};
+
+		/** @method getItemValue
+@description get Picklist Option Object field value or String
+@param options {Strimg|Object} list of options
+@param value {function|String[]|optional} property path to find
+@return {String} option String value, or undefined if value not found
+*/
+
+		svc.getItemValue = function(item, field)
+		{
+			if(angular.isFunction(field)) return field(item);
+			if(!item || String.isBlank(field) || field == "*") return item;
+			if(!angular.isObject(item))   return item.toString();
+			if(Array.isArray(field))
+				field = field.filter(String.isNotEmpty);
+			return svc.getFirstVar(field, item);
+		};
+
+		/** @method getOptionByValue
+@description get Picklist Option By its value or id
+&lt;br/>Note: this function create answer option maps if they do not exist
+@see module:common/services/CommonUtils~indexOptions
+
+@param options {object[]} list of options
+@param value {String} value to find
+
+@return {object} option with the specified value, or undefined if value not found
+*/
+
+		svc.getOptionByValue = function(options, value)
+		{
+			if(Array.isEmpty(options)) return;
+			if(String.isEmpty(value)) return value;
+
+			//map options by id once per question
+			if(!options.by)
+				svc.indexOptions(options);
+
+			//return whole option object or just its name
+			for(var key in options.by)
+				if(key &amp;&amp; options.by[key])
+					return options.by[key][value];
+
+			return null;
+		};
+
+		/** @method getOptionNameByValue
+@description Get Picklist Option By its value or id.
+&lt;br/>Note: this function create answer option maps if they do not exist
+@see module:common/services/CommonUtils~indexOptions
+@see module:common/services/CommonUtils~getOptionByValue
+
+@param options {Object[]} list of options
+@param value {String} value to find
+@param minLength {optional|Number} return option name only if it is longer than minLength
+@return {Object} name (label) of option with the specified value, or undefined if value not found
+*/
+		//function to display label of selected picklist item
+		svc.getOptionNameByValue = function(options, value, minLength)
+		{
+			if(!minLength) minLength = 0;
+			var opt = svc.getOptionByValue(options, value);
+			if(opt &amp;&amp; opt.name &amp;&amp; opt.name.length > minLength)
+				return opt.name;
+
+			if(!angular.isObject(value))
+				return value;
+		};
+
+		/** @method translateOptions
+@description Translate mutiple option values into Picklist Option.
+@param options {String[]} list of option values
+@param value {Object} map of label translations {value: 'translated label'}
+@return {Object[]} List of of options [ { value: value, name: 'translated label' }, ...]
+*/
+		svc.translateOptions = function(options, labelMap) {
+			if(window.labels &amp;&amp; angular.isString(labelMap))
+				labelMap = window.labels[labelMap];
+
+			return Array.map(options, function(val) {
+				return { value: val, name: svc.translateOption(val, labelMap) };
+			});
+		};
+
+		/** @method translateOption
+@description translate a single value using a label map.
+@param value {String[]} list of option value
+@param value {Object} map of label translations {value: 'translated label'}
+@return {String} translated label or original value, if corresponding label nnot found
+*/
+		svc.translateOption = function(value, labelMap) {
+			if(window.labels &amp;&amp; angular.isString(labelMap))
+				labelMap = window.labels[labelMap];
+			return labelMap &amp;&amp; labelMap[value] || value; 
+		};
+
+		//=============== SF Org namespace functions ===============
+
+		/** @method getNamespace
+@description get the default namespace of current org
+@return {string} namespace
+*/
+		svc.getNamespace = function()
+		{
+			//get namespace from remote actions if available
+			var ns = "";
+			if(window.$VFRM) {
+				ns = Object.keys(svc.getVar("$VFRM.last.actions"))[0];
+				return svc.namespace = String.substringBefore(ns, ".", false, true);
+			}
+
+			//or get namespace from variable
+			ns = svc.getVar("formViewSettings.namespace") || svc.getVar("fileUploadSettings.namespace") || svc.getVar("configSettings.namespace") || svc.getVar("namespace") || "";
+			if(ns)
+				return svc.namespace = String.substringBefore(ns, "__", false, true);
+
+			//or from static resource url: "/resource/1519710764000/QAAutoBReqStg__customiconimages"
+			ns = svc.getVar("sf_design_system.customIconsDir") || "";
+			if(ns)
+				return svc.namespace = ns.substringAfter("/", true).substringBefore("__");
+		};
+
+		/** @method getNamespacePrefix
+@description get the default namespace of current org + double underscore
+@return {string} namespace + __ or "" empty string if no namespace
+*/
+		svc.getNamespacePrefix = function()
+		{
+			if(!angular.isDefined(svc.namespace))
+				svc.getNamespace();
+			return svc.namespacePrefix = String.isEmpty(svc.namespace) ? "" : svc.namespace + "__";
+		};
+
+		/** @method removeNamespacePrefix
+@description remove the default namespace prefix from custom field name
+@param field {string} Field name with or without namespace prefix
+@return {string} Field name without namespace prefix
+*/
+		svc.removeNamespacePrefix = function(field, namespace)
+		{
+			var prefix = namespace || svc.namespacePrefix;
+			if(!prefix.endsWith("__"))
+				prefix += "__";
+
+			if(!prefix || !angular.isString(field) || String.isEmpty(field))
+				return field;
+
+			if(String.startsWith(field, prefix, true))
+				return String.substringAfter(field, prefix, false, true, false, true);
+
+			return field;
+		};
+
+		/** @method addNamespacePrefix
+@description add the default namespace prefix to custom field name
+@param field {string} Field name with or without namespace prefix
+@return {string} Custom Field name with namespace prefix or Standard Field name without namespace prefix
+*/
+		svc.addNamespacePrefix = function(field)
+		{
+			if(!svc.namespace || !angular.isString(field) || String.isEmpty(field))
+				return field;
+
+			if(!String.startsWith(field, svc.namespacePrefix, true) &amp;&amp; svc.isCustomName(field))
+				return svc.namespacePrefix + field;
+
+			return field;
+		};
+
+		/** @method isCustomName
+@description Tests if a name is a Custom Salesforce SObject or field name
+@param field {string} Field name with or without namespace prefix
+@return {boolean} true if custom, false if standard
+*/
+		svc.isCustomName = function(field)
+		{
+			return String.isNotEmpty(field) &amp;&amp; (field.endsWith("__c") || field.endsWith("__r")  || field.endsWith("__mdt"));
+		};
+
+		/** @method formatSize
+@description convert file size in bytes to soemthing more user friendly
+@param size {Number}  file size in bytes
+@param precision {optional|Number} Number of decimal digits after . (default: 2)
+@return {String} formatted string with unit (example: 34502 => "33.69 KB")
+*/
+
+		//convert size in bytes to soemthing more user friendly
+		//Example: 34502 => "34.2 KB"
+		svc.formatSize = function(size, precision)
+		{
+			if(String.isEmpty(size) || isNaN(size)) return "";
+			if(String.isEmpty(precision)) precision = 2;
+			var u = 0;
+			while(size >= 1024) {
+				u++;
+				size /= 1024;
+			}
+
+			if(u > 0)
+				size = size.toFixed(precision);
+			return  size + " " + FILE_SIZE_UNITS[u];
+		};
+
+		/** @method formatDate
+@description convert Date to formatted using moment date format
+@param size   {Date|String|Number} Date or timestamp as String or Number. Numeric string is converted to timestamp
+@param format {optional|String} Format descriptor (ex: "MM/DD/YYYY") or date format label name: shortDate | shortDateTime | longDate | longDateTime (default: "shortDateTime")
+@return {String} formatted string with unit: ex: "11/21/2020"
+*/
+		svc.formatDate = function(dt, format)
+		{
+			if(!angular.isFunction(window.moment)) return dt;
+
+			const dateFormats = svc.getVar("labels.dateFormat");
+			if(!format)
+				format = dateFormats &amp;&amp; dateFormats.shortDateTime || "MM/DD/YY";
+			else if(format in dateFormats)
+				format = dateFormats[format];
+
+			if(!isNaN(dt)) dt = Number(dt); //for numeric timestamp in String
+			return dt ? window.moment(dt).format(format) : "";
+		};
+
+		/** @method formatAddress
+@description convert Addresses to user friendly format.
+can take: String address, city, state, country, zipCode, Boolean multiLine
+or Object address, Boolean multiLine
+
+@param address {Object}   Salesforce Address object
+
+@param OR address {String}
+@param city {String}
+@param state {String}
+@param country {String}
+@param zipCode {String}
+@param multiLine {Boolean}
+
+@return {String} formatted address
+*/
+
+		svc.formatAddress = function(address, city, state, country, postalCode, multiLine)
+		{
+			if(String.isMissing(address) &amp;&amp; arguments.length &lt;= 2) return "";
+
+			if(address &amp;&amp; angular.isObject(address)) {
+				state = address.stateCode || address.state;
+				multiLine = city;
+				postalCode = address.postalCode || address.postCode;
+				return svc.formatAddress(address.street, address.city, state, address.country, postalCode, multiLine);
+			}
+
+			const separator = multiLine ? '\n' : ', ';
+			if(Array.in(country, ["United Kingdom", "GB"]))
+				return String.appendString(address, separator, city)
+					.appendString(separator, postalCode)
+					.appendString(separator, country);
+
+			if(String.isBlank(state))
+				return String.appendString(address, separator, postalCode)
+					.appendString(" ",  city)
+					.appendString(separator, country);
+
+			return String.appendString(address, separator, city)
+				.appendString(", ", state)
+				.appendString(" ",  postalCode)
+				.appendString(separator, country);
+		};
+
+		/** @method setAngularAttribute
+
+@description set angular attribute on a jquery element and compile template if scope is passed
+Useful for VisualForce page elements with apex:* tags, that don't support custom attributes in page HTML.
+
+@param el {jquery} jquery element
+@param name {String|Object} attribute name or Object containing mutiple attributes
+@param value {optional|String|Number|Object} attibute value (if name is a string)
+@param scope {$scope} angular scope to compile modified element template
+
+@return {jquery} el, modified
+
+@example
+with 1 attribute:
+CommonUtils.setAngularAttribute("#submitButton", "ng-click", "submit()", $scope);
+
+@example
+with multiple attributes:
+CommonUtils.setAngularAttribute("#submitButton", { "ng-click": "submit()", "ng-style": {color: "yellow"} }, $scope);
+*/
+		svc.setAngularAttribute = function(el, name, value, scope)
+		{
+			if(!el || !name) return el;
+
+			el = angular.element(el);
+			if(angular.isObject(name))
+			{
+				scope = value;
+				for(var key in name)
+					svc.setAngularAttribute(el, key, name[key]);
+			}
+			else
+			{
+				if(angular.isObject(value))
+					value = angular.toJson(value);
+				el.attr(name, value);
+			}
+
+			//if scope is passed: compile modified element with scope
+			if(scope)
+				$compile(el)(scope);
+
+			return el;
+		};
+
+		/** @method cleanupAngularObject
+
+@description
+Remove unwanted angular internal fields before passing object to VF Remoting request.
+Remove all fields with name starting with $ or $$, to prevent unknown field exceptions in RemoteAction methods when deserializing objects.
+Used in SubmimssionService.
+
+@param obj {Object} any JS Object. (will not be modified by this function)
+@param recursive {optional|Boolean} recurse into Object fields
+@return {Object} copy of the input object, without fields starting with $
+
+@example
+var row = {
+	"a1D4100000C12WJEAZ": "text Table",
+	"$oldValues": {
+		"a1D4100000C12WJEAZ": [{ "tradingPartner": "APs Minion 01 Dev Stg", "value": "text Table", "version": 1, "$rowindex": 0 }],
+		"a1D4100000C12WKEAZ": [{ "tradingPartner": "APs Minion 01 Dev Stg", "value": "Long Text TAble", "version": 1, "$rowindex": 0 }]
+	},
+	"a1D4100000C12WLEAZ": false,
+	"a1D4100000C12WKEAZ": "Long Text TAble",
+	"$rowindex": 0,
+	"$showHistory": {
+		"a1D4100000C12WJEAZ": false,
+		"a1D4100000C12WKEAZ": false
+	}
+};
+
+angular.toJson(CommonUtils.cleanupAngularObject(row), true):
+
+{
+	"a1D4100000C12WJEAZ": "text Table",
+	"a1D4100000C12WLEAZ": false,
+	"a1D4100000C12WKEAZ": "Long Text TAble"
+}
+
+*/
+		svc.cleanupAngularObject = function(obj, recursive)
+		{
+			//fix to match remote action method: set undefined params to null
+			if(!angular.isDefined(obj))
+				return null;
+
+			var cloned = false;
+			if(recursive &amp;&amp; angular.isArray(obj))
+			{
+				obj = angular.copy(obj);
+				cloned = true;
+				for(var i = 0; i &lt; obj.length; i++)
+					obj[i] = svc.cleanupAngularObject(obj[i], recursive);
+			}
+			else if(recursive &amp;&amp; angular.isObject(obj))
+			{
+				obj = angular.copy(obj);
+				cloned = true;
+				for(var key in obj)
+					if(obj.hasOwnProperty(key))
+						obj[key] = svc.cleanupAngularObject(obj[key], recursive);
+			}
+
+			var has$ = false;
+			for(var key in obj)
+				if(key &amp;&amp; key[0] == "$")
+				{
+					has$ = true;
+					break;
+				}
+
+			if(obj &amp;&amp; obj.hasOwnProperty &amp;&amp; has$)
+			{
+				if(!cloned)
+					obj = angular.copy(obj);
+
+				for(var key in obj)
+					if(key &amp;&amp; key[0] == "$")
+						delete obj[key];
+			}
+			return obj;
+		};
+
+		//replace keys: remove namespace prefix : arthurdev1__Supplied_Answer__c => Supplied_Answer
+		//recursive sub objects
+		svc.cleanupSobject = function(so, options)
+		{
+			//array: cleanup its elements
+			if(angular.isArray(so))
+				return so.map(obj => svc.cleanupSobject(obj, options));
+
+			if(!angular.isObject(so))
+				return so;
+
+			var removeNull =  angular.isObject(options) ? options.removeNull : options;
+			var result = {};
+			for(var key in so) {
+				if(String.isEmpty(key) || key === "attributes" || key[0] == "$" || removeNull &amp;&amp; String.isMissing(so[key]))
+					continue;
+
+				var field = svc.convertFieldName(key, options);
+				if(!angular.isObject(result[field]))  //if 2 have the same key prioritize __r object over __c id 
+					result[field] = svc.cleanupSobject(so[key], options); //recurse into sub objects and arrays
+			}
+
+			return result;
+		};
+
+		svc.convertFieldName = function(field, options)
+		{
+			if(String.isEmpty(field)) return field;
+
+			if(String.startsWith(field, svc.namespacePrefix, true))
+				field = String.substringAfter(field, svc.namespacePrefix, false, true, false, true);
+
+			if(options &amp;&amp; options.removeSuffixC &amp;&amp; field.endsWith("__c"))
+				field = field.substringBefore("__c", true);
+
+			if(options &amp;&amp; options.removeSuffixR &amp;&amp; field.endsWith("__r"))
+				field = field.substringBefore("__r", true);
+
+			if(options &amp;&amp; options.camelCase) {
+				field = field[0].toLowerCase() + field.substring(1);
+				field = field.replace(/_/g, "");
+			};
+
+			return field;
+		};
+
+		svc.sobjectToCamelCase = obj => svc.cleanupSobject(obj, {removeSuffixC: true, removeSuffixR: true, camelCase: true});
+
+		svc.getNamespacePrefix();
+	}
+
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

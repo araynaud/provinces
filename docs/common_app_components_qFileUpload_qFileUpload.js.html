@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: common/app/components/qFileUpload/qFileUpload.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: common/app/components/qFileUpload/qFileUpload.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module common/components/qFileUpload
+
+@description
+q-file-upload is the main component that handles the file upload.&lt;br/>
+It can render two modal dialogs, the file upload modal for single file uploading or for multiple (depending on configuration) and the metadata modal.&lt;br/>
+The component receives the current context of the form questions through the ContentDocumentService.
+Only 1 instance of this component is needed on a page.
+
+@requires common/services/ContentDocumentService.js
+@example
+&lt;q-file-upload>&lt;/q-file-upload>
+*/
+
+module.exports = function(ngModule)
+{
+	'use strict';
+
+	ngModule.component('qFileUpload', {
+		template: require('./qFileUpload.html'),
+		controllerAs: 'vm',
+		controller: QFileUploadController
+	});
+
+	QFileUploadController.$inject = ['$scope', '$element', 'CommonUtils', 'ContentDocumentService', 'FileUploadService', 'ToastService'];
+	function QFileUploadController  ( $scope,   $element,   CommonUtils,   ContentDocumentService,   FileUploadService,   ToastService )
+	{
+		const vm = this;
+		const MAX_FILES_PER_CALL = 10;
+		vm.namespace = CommonUtils.getNamespacePrefix();
+
+		window.qFileUpload = vm;
+		vm.labels = window.labels || {};
+
+		//imports from FileUploadService
+		vm.data = FileUploadService.data;
+		vm.cancelMetaData               = FileUploadService.cancelMetaData;
+		vm.cancelAllAndClose            = FileUploadService.hideFileUploadModal;
+		vm.processInputFileEvent        = FileUploadService.processInputFileEvent;
+		vm.processInputFileClean        = FileUploadService.processInputFileClean;
+		vm.processDragoverDropzoneEvent = FileUploadService.processDragoverDropzoneEvent;
+		vm.removeFromUploadList         = FileUploadService.removeFromFilesReadyToUpload;
+
+		vm.uploading      = () => vm.data.uploading;
+		vm.savingMetadata = () => vm.data.savingMetadata;
+
+		vm.categoryOptions = CommonUtils.translateOptions(window.fileUploadSettings.categories, vm.labels.category);
+		
+		vm.uploadButtons = [
+			{ text: vm.labels.common.cancel, close: true, click: vm.cancelAllAndClose, disabled: vm.uploading },
+			{ text: vm.labels.common.attach, click: FileUploadService.uploadReadyFiles, showLoader: vm.uploading, disabled: () => Array.isEmpty(vm.filesReadyToUpload) }
+		];
+
+		vm.metadataDialog = {
+			visible: false,
+			columns: 3,
+			fields: [
+				{ field: "Title",                             type: "text",     label: vm.labels.common.columnDocumentName,   required: true, columns: 2, maxLength: 80 },
+				{ field: vm.namespace + "Category__c",        type: "picklist", label: vm.labels.common.columnCategory,       required: true, options: vm.categoryOptions },
+				{ field: vm.namespace + "Expiration_Date__c", type: "date",     label: vm.labels.common.columnExpirationDate, required: true, placeholder: vm.labels.common.placeholderPickADate, modelFormat: "YYYY-MM-DD", min: "tomorrow", show: () => !vm.data.hideDate
+				},
+			],
+			actions: [
+				{ text: vm.labels.common.cancel,          close: true, click: vm.cancelMetaData, disabled: vm.uploading },
+				{ text: vm.labels.documentLibrary.discardFile, click: discardFile,    disabled: vm.uploading, show: () => !this.data.singleFile },
+				{ text: vm.labels.common.save, click: saveMetaData, showLoader: vm.uploading,      disabled: vm.savingMetadata }
+			]
+		};
+
+		/**
+		* @module common/components/qFileUpload
+		* @description file upload event handler
+		*
+		* @method
+		* @name activate
+		*
+		*/
+		function init()
+		{
+			$element.ready(assignEventListeners);
+
+			$scope.$on('addPendingMetadataFile', (event, payload) => {
+				delete payload.file.Type;
+				delete payload.file.size;
+
+				//upload directly without metadata dialog
+				if(!FileUploadService.data.useMetadataDialog)
+					return simpleUpload(payload.file);
+
+				//or pass file to metadata dialog
+				vm.filesPendingMetaData.push(payload.file);
+				if(!vm.pendingDoc)
+					vm.pendingDoc = payload.file;
+				if(payload.last)
+					FileUploadService.showFileMetadataModal();
+				$scope.$apply();
+			});
+
+			vm.questionText = FileUploadService.currentQuestionText;
+
+			// on file selection event files are first added here
+			// those events are handled below in the link function.
+			vm.filesPendingMetaData = FileUploadService.filesPendingMetaData;
+
+			// once metaData is completed the update js object is added to this array.
+			// - and awaits final uproval for upload.
+			vm.filesReadyToUpload = FileUploadService.filesReadyToUpload;
+		}
+
+		function assignEventListeners()
+		{
+			//single upload events
+			const el = $element[0];
+			const singleDropzoneElement  = el.querySelector('#single-dropzone-target');
+			const singleFileInputElement = vm.data.singleFileInputElement = el.querySelector('#single-file-input');
+			
+			singleFileInputElement.addEventListener('change', vm.processInputFileEvent);
+			singleDropzoneElement.addEventListener('dragover', vm.processDragoverDropzoneEvent);
+			singleDropzoneElement.addEventListener('drop', vm.processInputFileEvent);
+
+			//multiple upload events
+			const mutipleDropzoneElement  = el.querySelector('#multiple-dropzone-target');
+			const multipleFileInputElement = el.querySelector('#multiple-file-input');
+
+			mutipleDropzoneElement.addEventListener('dragover', vm.processDragoverDropzoneEvent);
+
+			mutipleDropzoneElement.addEventListener('drop', function(event)
+			{
+				//run validation
+				var msg = "";
+
+				if(event.dataTransfer.files.length > MAX_FILES_PER_CALL)
+				{
+					event.preventDefault();
+					msg = String.format("{0} {1} {2}", vm.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, vm.labels.documentLibrary.documentsAtATime);
+				}
+				else if(vm.filesReadyToUpload)
+				{
+					var fileCount = Array.filter(vm.filesReadyToUpload, file => file.Type != 'Form').length;
+
+					if(fileCount >= MAX_FILES_PER_CALL) {
+						event.preventDefault();
+						msg = String.format("{0} {1} {2}", vm.labels.documentLibrary.youHave, MAX_FILES_PER_CALL, vm.labels.documentLibrary.readyToUpload);
+					}
+					else if(event.dataTransfer.files.length + fileCount > MAX_FILES_PER_CALL) {
+						event.preventDefault();
+						msg = String.format("{0} {1} {2}", vm.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, vm.labels.documentLibrary.documentsAtATime);
+					}
+				}
+
+				if(msg)
+					return ToastService.toast(msg, "error", 3000);
+
+				vm.processInputFileEvent(...arguments);
+			});
+
+			multipleFileInputElement.addEventListener('change', function()
+			{
+				//run validation
+				var msg = "";
+
+				if(this.files.length > MAX_FILES_PER_CALL) {
+					msg = String.format("{0} {1} {2}", vm.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, vm.labels.documentLibrary.documentsAtATime);
+				}
+				else if(vm.filesReadyToUpload)
+				{
+					var fileCount = Array.filter(vm.filesReadyToUpload, file => file.Type != 'Form').length;
+					if(fileCount >= MAX_FILES_PER_CALL) {
+						msg = String.format("{0} {1} {2}", vm.labels.documentLibrary.youHave, MAX_FILES_PER_CALL, vm.labels.documentLibrary.readyToUpload);
+					}
+					else if(this.files.length + fileCount > MAX_FILES_PER_CALL) {
+						event.preventDefault();
+						msg = String.format("{0} {1} {2}", vm.labels.documentLibrary.uploadMaximumOf, MAX_FILES_PER_CALL, vm.labels.documentLibrary.documentsAtATime);
+					}
+				}
+
+				if(msg)
+					return ToastService.toast(msg, "error", 3000);
+
+				vm.processInputFileEvent(...arguments);
+			});
+		}
+
+		/**
+		 * @module common/components/qFileUpload
+		 * @description Closes the metaData modal and clears the temp array
+		 *
+		 * @param {index} - the index of the temp file to remove
+		 * @method
+		 * @name discardFile
+		 */
+		function discardFile()
+		{
+			vm.data.currentMetaDataModelIndex++;
+			vm.pendingDoc = vm.filesPendingMetaData[vm.data.currentMetaDataModelIndex];
+			if(vm.data.currentMetaDataModelIndex === vm.filesPendingMetaData.length)
+				FileUploadService.cancelMetaData();
+		}
+
+		/**
+		 * @module common/components/qFileUpload
+		 * @description Closes the metaData modal and clears the temp array
+		 *
+		 * @param {index} - the index of the temp file to update metaData changes
+		 * @method
+		 * @name saveMetaData
+		 */
+		function saveMetaData()
+		{
+			var file = vm.pendingDoc; // = vm.filesPendingMetaData[vm.data.currentMetaDataModelIndex];
+
+			if(!file.Title || !CommonUtils.getVar('Category__c', file) || !vm.data.hideDate &amp;&amp; !CommonUtils.getVar('Expiration_Date__c', file))
+				return ToastService.toast(vm.labels.common.pleaseSelectRequiredFields, "error", 3000);
+
+			const fileNameLengthLimit = 99; // max length of pathOnClient (Name) is 100 chars
+			const rawFileName = file.Title;
+
+			file.Title = ContentDocumentService.getCorrectLengthFileName(rawFileName, fileNameLengthLimit);
+
+			if(file.Type == 'Form'){
+				file.PathOnClient = '/' + file.Title;
+			}
+			else
+			{
+				//Keep extension for the files names modified.
+				const fileExtension = '.' + file.PathOnClient.substringAfter('.', true);
+				const fileEnding = '.' + file.Title.substringAfter('.', true);
+				const completefileName = rawFileName + fileExtension;
+
+				if(fileEnding != fileExtension){
+					file.Title = ContentDocumentService.getCorrectLengthFileName(completefileName, fileNameLengthLimit);
+					file.PathOnClient = '/' + completefileName;
+				}else{
+					file.PathOnClient = '/' + file.Title;
+				}
+			}
+
+			vm.filesReadyToUpload.push(file);
+			vm.data.currentMetaDataModelIndex++;
+			vm.pendingDoc = vm.filesPendingMetaData[vm.data.currentMetaDataModelIndex];
+
+			if(vm.data.singleFile) {
+				FileUploadService.uploadReadyFiles();
+			}
+			else if(vm.data.currentMetaDataModelIndex === vm.filesPendingMetaData.length) {
+				vm.data.metaDataModalVisible  = false;
+				vm.data.mainModalVisible = true;
+			}
+		}
+
+		//upload without metadata dialog
+		function simpleUpload(file) {
+			vm.filesReadyToUpload.push(file);
+			FileUploadService.uploadReadyFiles();
+			vm.data.mainModalVisible = false;
+			$scope.$apply();
+		}
+
+		init();
+	}
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li><a href="module-Array.html">Array</a></li><li><a href="module-common.html">common</a></li><li><a href="module-common_components_answerHistory.html">common/components/answerHistory</a></li><li><a href="module-common_components_batchStatus.html">common/components/batchStatus</a></li><li><a href="module-common_components_commentSummary.html">common/components/commentSummary</a></li><li><a href="module-common_components_dropdownMenu.html">common/components/dropdownMenu</a></li><li><a href="module-common_components_editDialog.html">common/components/editDialog</a></li><li><a href="module-common_components_editField.html">common/components/editField</a></li><li><a href="module-common_components_editForm.html">common/components/editForm</a></li><li><a href="module-common_components_formComment.html">common/components/formComment</a></li><li><a href="module-common_components_labSelection.html">common/components/labSelection</a></li><li><a href="module-common_components_lidlTreeGrid.html">common/components/lidlTreeGrid</a></li><li><a href="module-common_components_multiSelect.html">common/components/multiSelect</a></li><li><a href="module-common_components_pageLoader.html">common/components/pageLoader</a></li><li><a href="module-common_components_partnerConnect.html">common/components/partnerConnect</a></li><li><a href="module-common_components_popover.html">common/components/popover</a></li><li><a href="module-common_components_productConnect.html">common/components/productConnect</a></li><li><a href="module-common_components_qFileUpload.html">common/components/qFileUpload</a></li><li><a href="module-common_components_qFileUploadField.html">common/components/qFileUploadField</a></li><li><a href="module-common_components_questionLabel.html">common/components/questionLabel</a></li><li><a href="module-common_components_sldsCheckbox.html">common/components/sldsCheckbox</a></li><li><a href="module-common_components_sldsDatepicker.html">common/components/sldsDatepicker</a></li><li><a href="module-common_components_sldsDescriptionBubble.html">common/components/sldsDescriptionBubble</a></li><li><a href="module-common_components_sldsHeader.html">common/components/sldsHeader</a></li><li><a href="module-common_components_sldsLookup.html">common/components/sldsLookup</a></li><li><a href="module-common_components_sldsNotification.html">common/components/sldsNotification</a></li><li><a href="module-common_components_sldsProgressIndicator.html">common/components/sldsProgressIndicator</a></li><li><a href="module-common_components_sldsTable.html">common/components/sldsTable</a></li><li><a href="module-common_components_sldsTabs.html">common/components/sldsTabs</a></li><li><a href="module-common_components_sldsTimeframePicker.html">common/components/sldsTimeframePicker</a></li><li><a href="module-common_components_sldsToast.html">common/components/sldsToast</a></li><li><a href="module-common_components_sldsTree.html">common/components/sldsTree</a></li><li><a href="module-common_components_stencilImage.html">common/components/stencilImage</a></li><li><a href="module-common_components_svgButton.html">common/components/svgButton</a></li><li><a href="module-common_components_svgIcon.html">common/components/svgIcon</a></li><li><a href="module-common_components_taskList.html">common/components/taskList</a></li><li><a href="module-common_components_uprelationshipPermissions.html">common/components/uprelationshipPermissions</a></li><li><a href="module-common_services.html">common/services</a></li><li><a href="module-common_services_CommonUtils.html">common/services/CommonUtils</a></li><li><a href="module-common_services_ContentDocumentService.html">common/services/ContentDocumentService</a></li><li><a href="module-common_services_FileUploadService.html">common/services/FileUploadService</a></li><li><a href="module-common_services_FormValidationService.html">common/services/FormValidationService</a></li><li><a href="module-common_services_NavigationService.html">common/services/NavigationService</a></li><li><a href="module-common_services_ProductTestService.html">common/services/ProductTestService</a></li><li><a href="module-common_services_RemoteActionFactory.html">common/services/RemoteActionFactory</a></li><li><a href="module-common_services_RemoteActionService.html">common/services/RemoteActionService</a></li><li><a href="module-common_services_SearchService.html">common/services/SearchService</a></li><li><a href="module-common_services_SldsTableService.html">common/services/SldsTableService</a></li><li><a href="module-common_services_SoqlService.html">common/services/SoqlService</a></li><li><a href="module-formview.html">formview</a></li><li><a href="module-formview_commponents_reUseForm.html">formview/commponents/reUseForm</a></li><li><a href="module-formview_components_formView.html">formview/components/formView</a></li><li><a href="module-formview_components_qSection.html">formview/components/qSection</a></li><li><a href="module-formview_components_qTab.html">formview/components/qTab</a></li><li><a href="module-formview_services_NutritionalTableService.html">formview/services/NutritionalTableService</a></li><li><a href="module-formview_services_SubmissionService.html">formview/services/SubmissionService</a></li><li><a href="module-formview_services_TabService.html">formview/services/TabService</a></li><li><a href="module-library_components_addDocument.html">library/components/addDocument</a></li><li><a href="module-library_components_main.html">library/components/main</a></li><li><a href="module-partners_components_main.html">partners/components/main</a></li><li><a href="module-partners_components_partnerAdd.html">partners/components/partnerAdd</a></li><li><a href="module-partners_components_partnerMatchCard.html">partners/components/partnerMatchCard</a></li><li><a href="module-partners_components_partnerMatches.html">partners/components/partnerMatches</a></li><li><a href="module-partners_components_reciprocalRelationship.html">partners/components/reciprocalRelationship</a></li><li><a href="module-partners_components_uuRelationship.html">partners/components/uuRelationship</a></li><li><a href="module-products_components_FindProduct.html">products/components/FindProduct</a></li><li><a href="module-products_components_partnerMatchCard.html">products/components/partnerMatchCard</a></li><li><a href="module-products_components_upRelationship.html">products/components/upRelationship</a></li><li><a href="module-productTest_components_ProductTestManager.html">productTest/components/ProductTestManager</a></li><li><a href="module-requests_components_CreateRequest.html">requests/components/CreateRequest</a></li><li><a href="module-requests_components_requestAddDocument.html">requests/components/requestAddDocument</a></li><li><a href="module-String.html">String</a></li><li><a href="module-tpartnergroups_components_main.html">tpartnergroups/components/main</a></li><li><a href="module-tpartnergroups_components_setProductTest.html">tpartnergroups/components/setProductTest</a></li><li><a href="module-tpartnergroups_components_setRequirement.html">tpartnergroups/components/setRequirement</a></li><li><a href="module-userPreference_main.html">userPreference/main</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Mon Dec 07 2020 17:54:01 GMT-0800 (Pacific Standard Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
